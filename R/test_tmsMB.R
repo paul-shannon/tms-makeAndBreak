@@ -11,6 +11,7 @@ runTests <- function()
    test_run.tms()
    test_run.trena()
    test_run.small()
+   test_run.2k.break.motifs()
    test_run.large()
 
 } # runTests
@@ -217,7 +218,10 @@ test_run.2k.break.motifs <- function()
     checkEquals(tbl.trena$gene, c("SP4", "GABPA", "HES7", "PLAG1", "NFYA"))
     checkEquals(tbl.trena$tfbs, c(2,1,1,1,1))
     tfam$breakMotifs(tbl.trena, tbl.tms)
-    tbl.breaks <- tfam$getBreaksTable()
+    checkEquals(length(tfam$get.motifBreaks()), 14)
+    tbl.breaks <- tfam$get.breaksTable()
+    checkEquals(dim(tbl.breaks), c(3, 9))
+    checkTrue(all(c("GABPA", "HES7", "SP4") %in% tbl.breaks$geneSymbol))
 
 } # test_run.2k.break.motifs
 #----------------------------------------------------------------------------------------------------

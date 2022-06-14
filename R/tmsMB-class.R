@@ -35,6 +35,7 @@ tmsMB = R6Class("tmsMB",
                    tbl.tmsFiltered=NULL,   # has just the TFs and regions used by trena
                    etx=NULL,
                    mtx.rna=NULL,
+                   motifBreaks=NULL,
                    tbl.breaks=NULL
                    ),
 
@@ -152,6 +153,11 @@ tmsMB = R6Class("tmsMB",
             private$tbl.tms
             },
         #------------------------------------------------------------
+        get.motifBreaks = function(){
+            private$motifBreaks
+            },
+
+        #------------------------------------------------------------
         get.breaksTable = function(){
             private$tbl.breaks
             },
@@ -191,9 +197,8 @@ tmsMB = R6Class("tmsMB",
             tbl.tfbs <- subset(tbl.tms, tf %in% tbl.trena$gene)
             dim(tbl.tfbs)
 
-            browser()
             gr.tfbs <- GRanges(tbl.tfbs[, c("chrom", "start", "end")])
-            tbl.gtex.eqtls <- private$get.gtex.eqtls()
+            tbl.gtex.eqtls <- self$get.gtex.eqtls()
             tbl.eqtls.tmp <- tbl.gtex.eqtls[, c("chrom", "hg38", "hg38", "rsid")]
             colnames(tbl.eqtls.tmp) <- c("chrom", "start", "end", "rsid")
             tbl.eqtls.tmp$chrom <- sprintf("chr%s", tbl.eqtls.tmp$chrom)
@@ -230,6 +235,7 @@ tmsMB = R6Class("tmsMB",
                                    bkg = c(A=0.25, C=0.25, G=0.25, T=0.25),
                                    BPPARAM = bpparam,
                                    verbose=TRUE)
+            private$motifBreaks <- results
             tbl.breaks <- as.data.frame(results, row.names=NULL)
             colnames(tbl.breaks)[1] <- "chrom"
             tbl.breaks$chrom <- as.character(tbl.breaks$chrom)
