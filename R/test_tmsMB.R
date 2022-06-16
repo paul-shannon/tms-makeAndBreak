@@ -249,7 +249,11 @@ test_run.2k.break.motifs <- function()
 
     tbl.tms <- tfam$get.tmsTable()
     dim(tbl.tms)
-    tbl.tms.filtered <- subset(tbl.tms, ampad.eqtl & gtex.eqtl & abs(cor.all) > 0.4)
+    tbl.tms.filtered <- subset(tbl.tms,
+                               abs(ampad.eqtl.score) > 1 &
+                               abs(gtex.eqtl.score) > 1 & abs(cor.all) > 0.3)
+
+
     dim(tbl.tms.filtered)
     tfam$set.tmsFilteredTable(tbl.tms.filtered)
     tfam$get.tmsFilteredTable()
@@ -258,13 +262,14 @@ test_run.2k.break.motifs <- function()
     tfam$run.trena(tf.candidates)
     tbl.trena <- tfam$get.trenaTable()
     checkEquals(dim(tbl.trena), c(5, 8))
-    checkEquals(tbl.trena$gene, c("SP4", "GABPA", "HES7", "PLAG1", "NFYA"))
-    checkEquals(tbl.trena$tfbs, c(2,1,1,1,1))
+    checkEquals(all(tbl.trena$gene %in% c("HES7","ZEB1","TGIF1","E2F4","USF2")))
+
+    checkEquals(tbl.trena$tfbs, c(1,1,1,1,1))
     tfam$breakMotifs(tbl.trena, tbl.tms)
-    checkEquals(length(tfam$get.motifBreaks()), 14)
+    checkEquals(length(tfam$get.motifBreaks()), 12)
     tbl.breaks <- tfam$get.breaksTable()
-    checkEquals(dim(tbl.breaks), c(3, 9))
-    checkTrue(all(c("GABPA", "HES7", "SP4") %in% tbl.breaks$geneSymbol))
+    checkEquals(dim(tbl.breaks), c(5, 9))
+    checkTrue("HES7" %in% tbl.breaks$geneSymbol)
 
 } # test_run.2k.break.motifs
 #----------------------------------------------------------------------------------------------------
