@@ -130,23 +130,47 @@ tmsMB = R6Class("tmsMB",
         #------------------------------------------------------------
         add.eqtls.toTmsTable = function(){
             tbl.tms <- private$tbl.tms
+
             gr.tms <- GRanges(tbl.tms)
             gr.ampad <- with(private$tbl.ampad.eqtls, GRanges(seqnames=chrom[1], IRanges(hg38)))
-            tbl.ov <- as.data.frame(findOverlaps(gr.ampad, gr.tms))
-            ampad.eqtl <- rep(FALSE, nrow(tbl.tms))
-            if(nrow(tbl.ov) > 0)
-                ampad.eqtl[unique(tbl.ov[,2])] <- TRUE
-            private$tbl.tms$ampad.eqtl <- ampad.eqtl
-
             tbl.gtex.tissue.eqtls <- subset(private$tbl.gtex.eqtls, id==private$current.tissue)
-            dim(tbl.gtex.tissue.eqtls)
             gr.gtex <- with(tbl.gtex.tissue.eqtls, GRanges(seqnames=sprintf("chr%s", chrom[1]), IRanges(hg38)))
+
+            tbl.ov <- as.data.frame(findOverlaps(gr.ampad, gr.tms))
+
+                #------------------------------------
+                # first the ampad eqtl pvalue & beta
+                #------------------------------------
+
+            pval <- rep(1, nrow(tbl.tms))
+            beta <- rep(0, nrow(tbl.tms))
+            if(nrow(tbl.ov) > 0){
+               tms.indices <- tbl.ov[,2]
+               eqtl.indices <- tbl.ov[,1]
+               pval[tms.indices] <- private$tbl.ampad.eqtls[eqtl.indices, "pvalue"]
+               beta[tms.indices] <- private$tbl.ampad.eqtls[eqtl.indices, "beta"]
+               }
+            private$tbl.tms$ampad.eqtl.pval <- pval
+            private$tbl.tms$ampad.eqtl.beta <- beta
+            private$tbl.tms$ampad.eqtl.score <- -log10(pval) * beta
+
+                #---------------------------------
+                # now the gtex eqtl pvalue & beta
+                #---------------------------------
+
             tbl.ov <- as.data.frame(findOverlaps(gr.gtex, gr.tms))
             dim(tbl.ov)
-            gtex.eqtl <- rep(FALSE, nrow(tbl.tms))
-            if(nrow(tbl.ov) > 0)
-                gtex.eqtl[unique(tbl.ov[,2])] <- TRUE
-            private$tbl.tms$gtex.eqtl <- gtex.eqtl
+            pval <- rep(1, nrow(tbl.tms))
+            beta <- rep(0, nrow(tbl.tms))
+            if(nrow(tbl.ov) > 0){
+               tms.indices <- tbl.ov[,2]
+               eqtl.indices <- tbl.ov[,1]
+               pval[tms.indices] <- tbl.gtex.tissue.eqtls[eqtl.indices, "pvalue"]
+               beta[tms.indices] <- tbl.gtex.tissue.eqtls[eqtl.indices, "beta"]
+               }
+            private$tbl.tms$gtex.eqtl.pval <- pval
+            private$tbl.tms$gtex.eqtl.beta <- beta
+            private$tbl.tms$gtex.eqtl.score <- -log10(pval) * beta
             },
         #------------------------------------------------------------
         get.tmsTable = function(){
@@ -273,13 +297,56 @@ tmsMB = R6Class("tmsMB",
             private$tbl.breaks <- tbl.breaks.tfbs
             },  # breakMotifs
         #------------------------------------------------------------
-        viz = function(igv){
+        viz = function(igv, current.tissue, tbl.trena, tbl.tms, tbl.tms.filtered,
+                       tbl.gtex.eqtls, tbl.ampad.eqtls, tbl.oc, tbl.breaks) {
             shoulder <- 1000
             roi <- self$getStudyRegion()
             roi.string <- with(roi, sprintf("%s:%d-%d", chrom, start-1000, end+1000))
             showGenomicRegion(igv, roi.string)
-            tbl.trena <- self$get.trenaTable()
-            tbl.tms <- self$get.tmsFilteredTable()
+
+                #----------------------------------------------------
+                # motifbreakR results
+                #-----------------------------------------------------
+
+            if(!all(is.null(tbl.breaks))){
+                tbl.breaks$score <- with(tbl.breaks, pctRef * pctDelta * 100)
+                dups <- which(duplicated(tbl.breaks[, c("SNP_id", "geneSymbol")]))
+                if(length(dups) > 0)
+                    tbl.breaks <- tbl.breaks[-dups,]
+                tbl.track <- tbl.breaks[, c("chrom", "start", "end", "score", "SNP_id", "geneSymbol")]
+                track <- DataFrameQuantitativeTrack("motif disruption", tbl.track, colo="red", autoscale=TRUE)
+                displayTrack(igv, track)
+                }  # tbl.breaks
+
+                #----------------------------------------------------
+                # gtex tissue-specific eqtls, alredy filterd for pval
+                #-----------------------------------------------------
+
+            tbl.eqtl <- tbl.gtex.eqtls
+            tbl.eqtl <- subset(tbl.eqtl, hg38 >= roi$start & hg38 <= roi$end)
+            tbl.eqtl <- tbl.eqtl[, c("chrom", "hg38", "hg38", "rsid", "pvalue", "beta")]
+            colnames(tbl.eqtl)[c(2,3)] <- c("start", "end")
+            tbl.eqtl$start <- tbl.eqtl$start - 1
+            tbl.eqtl$score <- with(tbl.eqtl, -log10(pvalue) * beta)
+            coi <- c("chrom", "start", "end", "score", "rsid")
+            tbl.eqtl <- tbl.eqtl[, coi]
+            dups <- which(duplicated(tbl.eqtl[, c("chrom", "start", "end", "rsid")]))
+            if(length(dups) > 0)
+                tbl.eqtl <- tbl.eqtl[-dups,]
+            title <- current.tissue
+            title <- sub("Brain_", "", title)
+            track <- DataFrameQuantitativeTrack(title, tbl.eqtl, autoscale=TRUE, color="black")
+            displayTrack(igv, track)
+
+                #----------------------------------------------------
+                # ampad rosmap eqtls, alredy filterd for pval
+                #-----------------------------------------------------
+            tbl.track <- subset(tbl.ampad.eqtls, genesymbol==private$targetGene)
+            track <- GWASTrack("rosmap eqtls", tbl.track, chrom.col=1, pos.col=3, pval.col=5)
+            displayTrack(igv, track)
+
+
+            tbl.tms <- tbl.tms.filtered
             stopifnot(all(tbl.tms$tf %in% tbl.trena$gene))
                 #-----------------------------------
                 # draw the tfbs, one track per tf
@@ -293,45 +360,13 @@ tmsMB = R6Class("tmsMB",
                 # draw the open chromatin
                 #-----------------------------------
             extra.margin <- 2000
-            tbl.track <- subset(private$tbl.oc, chrom==roi$chrom &
-                                                start >= roi$start-extra.margin &
-                                                end <= roi$end+extra.margin)[, c("chrom", "start", "end")]
+            tbl.track <- subset(tbl.oc, chrom==roi$chrom &
+                                        start >= roi$start-extra.margin &
+                                        end <= roi$end+extra.margin)[, c("chrom", "start", "end")]
             track <- DataFrameAnnotationTrack("OC", tbl.track, color="darkgrey")
             displayTrack(igv, track)
 
-                #----------------------------------------------------
-                # gtex tissue-specific eqtls, alredy filterd for pval
-                #-----------------------------------------------------
-            tbl.eqtl <- self$get.gtex.eqtls()
-            tbl.eqtl <- subset(tbl.eqtl, hg38 >= roi$start & hg38 <= roi$end)
-            tbl.eqtl <- tbl.eqtl[, c("chrom", "hg38", "hg38", "rsid", "pvalue", "beta")]
-            colnames(tbl.eqtl)[c(2,3)] <- c("start", "end")
-            tbl.eqtl$start <- tbl.eqtl$start - 1
-            tbl.eqtl$score <- with(tbl.eqtl, -log10(pvalue) * beta)
-            coi <- c("chrom", "start", "end", "score", "rsid")
-            tbl.eqtl <- tbl.eqtl[, coi]
-            dups <- which(duplicated(tbl.eqtl[, c("chrom", "start", "end", "rsid")]))
-            if(length(dups) > 0)
-                tbl.eqtl <- tbl.eqtl[-dups,]
-            browser()
-            title <- self$get.current.GTEx.eqtl.tissue()
-            title <- sub("Brain_", "", title)
-            track <- DataFrameQuantitativeTrack(title, tbl.eqtl, autoscale=TRUE, color="black")
-            displayTrack(igv, track)
 
-                #----------------------------------------------------
-                # motifbreakR results
-                #-----------------------------------------------------
-            tbl.breaks <- ts$get.breaksTable()
-            if(!all(is.null(tbl.breaks))){
-                tbl.breaks$score <- with(tbl.breaks, pctRef * pctDelta * 100)
-                dups <- which(duplicated(tbl.breaks[, c("SNP_id", "geneSymbol")]))
-                if(length(dups) > 0)
-                    tbl.breaks <- tbl.breaks[-dups,]
-                tbl.track <- tbl.breaks[, c("chrom", "start", "end", "score", "SNP_id", "geneSymbol")]
-                track <- DataFrameQuantitativeTrack("motif disruption", tbl.track, colo="red", autoscale=TRUE)
-                displayTrack(igv, track)
-                }  # tbl.breaks
 
             } # viz
         #------------------------------------------------------------
