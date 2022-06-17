@@ -17,6 +17,7 @@ runTests <- function()
 
 } # runTests
 #----------------------------------------------------------------------------------------------------
+# chr7:100,304,414-100,343,410   good region for TEAD1 regulating PILRA
 targetGene <- "TFAM"
 trenaProject <- TrenaProjectAD()
 data.dir <- "~/github/gwasExplorer/studies/tfam/data"

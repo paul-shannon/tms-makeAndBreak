@@ -132,9 +132,13 @@ tmsMB = R6Class("tmsMB",
             tbl.tms <- private$tbl.tms
 
             gr.tms <- GRanges(tbl.tms)
-            gr.ampad <- with(private$tbl.ampad.eqtls, GRanges(seqnames=chrom[1], IRanges(hg38)))
-            tbl.gtex.tissue.eqtls <- subset(private$tbl.gtex.eqtls, id==private$current.tissue)
-            gr.gtex <- with(tbl.gtex.tissue.eqtls, GRanges(seqnames=sprintf("chr%s", chrom[1]), IRanges(hg38)))
+            tbl.ae <- subset(private$tbl.ampad.eqtls, hg38 > private$study.region$start &
+                                                      hg38 < private$study.region$end)
+            gr.ampad <- with(tbl.ae, GRanges(seqnames=chrom[1], IRanges(hg38)))
+            tbl.ge <- subset(private$tbl.gtex.eqtls, id==private$current.tissue &
+                                                     hg38 > private$study.region$start &
+                                                     hg38 < private$study.region$end)
+            gr.gtex <- with(tbl.ge, GRanges(seqnames=sprintf("chr%s", chrom[1]), IRanges(hg38)))
 
             tbl.ov <- as.data.frame(findOverlaps(gr.ampad, gr.tms))
 
@@ -147,8 +151,8 @@ tmsMB = R6Class("tmsMB",
             if(nrow(tbl.ov) > 0){
                tms.indices <- tbl.ov[,2]
                eqtl.indices <- tbl.ov[,1]
-               pval[tms.indices] <- private$tbl.ampad.eqtls[eqtl.indices, "pvalue"]
-               beta[tms.indices] <- private$tbl.ampad.eqtls[eqtl.indices, "beta"]
+               pval[tms.indices] <- tbl.ae[eqtl.indices, "pvalue"]
+               beta[tms.indices] <- tbl.ae[eqtl.indices, "beta"]
                }
             private$tbl.tms$ampad.eqtl.pval <- pval
             private$tbl.tms$ampad.eqtl.beta <- beta
@@ -165,8 +169,8 @@ tmsMB = R6Class("tmsMB",
             if(nrow(tbl.ov) > 0){
                tms.indices <- tbl.ov[,2]
                eqtl.indices <- tbl.ov[,1]
-               pval[tms.indices] <- tbl.gtex.tissue.eqtls[eqtl.indices, "pvalue"]
-               beta[tms.indices] <- tbl.gtex.tissue.eqtls[eqtl.indices, "beta"]
+               pval[tms.indices] <- tbl.ge[eqtl.indices, "pvalue"]
+               beta[tms.indices] <- tbl.ge[eqtl.indices, "beta"]
                }
             private$tbl.tms$gtex.eqtl.pval <- pval
             private$tbl.tms$gtex.eqtl.beta <- beta

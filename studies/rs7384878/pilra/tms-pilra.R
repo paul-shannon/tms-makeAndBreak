@@ -16,7 +16,8 @@ if(!exists("tbl.fimo")){
    tbl.fimo <- get(load(file.path(data.dir, "tbl.fimo.PILRA.RData")))
    #tbl.ampad.eqtls.raw <- get(load(file.path(data.dir, "ampad.eqtls.pilra.plusMinus.1M.RData")))
    #tbl.ampad.eqtls <- subset(tbl.ampad.eqtls.raw, study=="ampad-rosmap" & pvalue < 0.001)
-   tbl.ampad.eqtls <- get(load(file.path(data.dir, "tbl.eqtls.rosmap")))
+   tbl.ampad.eqtls.raw <- get(load(file.path(data.dir, "tbl.eqtls.rosmap.RData")))
+   tbl.ampad.eqtls <- subset(tbl.ampad.eqtls.raw, genesymbol==targetGene & pvalue < 0.001)
    tbl.gtex.eqtls.raw <- get(load(file.path(data.dir, "gtex-eqtls-tbl.RData")))
    tbl.gtex.eqtls <- subset(tbl.gtex.eqtls.raw, gene==targetGene & pvalue < 0.001)
    data.dir <- "~/github/TrenaProjectAD/inst/extdata/genomicRegions"
@@ -35,12 +36,16 @@ tag.snp.loc <- 100334426
 #----------------------------------------------------------------------------------------------------
 run <- function()
 {
+    browser()
     chrom <- tag.snp.chrom
     center <- tag.snp.loc
-    shoulder <- 1000000
+    shoulder <- 100000 #000
+    #roi <- getGenomicRegion(igv)
     new.start <- center - shoulder
     new.end   <- center + shoulder
+
     tms$setStudyRegion(chrom=chrom, start=new.start, end=new.end)
+    #tms$setStudyRegion(chrom=roi$chrom, start=roi$start, end=roi$end)
 
     study.region <- tms$getStudyRegion()
     study.region$width.kb
@@ -49,10 +54,42 @@ run <- function()
 
     tms$run.tms()
     tms$add.eqtls.toTmsTable()
+    tbl.tms <- tms$get.tmsTable()
+    dim(tbl.tms)
+
+     psql.method <- function(){
+        require(RPostgreSQL)
+        roi <- getGenomicRegion(igv)
+        db <- dbConnect(PostgreSQL(), user= "trena", password="trena", dbname="genereg2021", host="khaleesi")
+        dbGetQuery(db, "select * from eqtl2 limit 3")
+        query <- sprintf("select * from eqtl2 where chrom='chr7' and hg38 > %d and hg38 < %d",
+                         roi$start, roi$end)
+        tbl.db <- dbGetQuery(db, query)
+        tbl.db <- subset(tbl.db, genesymbol=="PILRA")
+        tbl.track <- tbl.db[, c("chrom", "hg38", "hg38", "pvalue", "beta")]
+        colnames(tbl.track) <- c("chrom", "start", "end", "pvalue", "beta")
+        tbl.track$start <- tbl.track$start - 1
+        tbl.track$score <- with(tbl.track, -log10(pvalue) * beta)
+        fivenum(tbl.track$score)
+        track <- DataFrameQuantitativeTrack("rosmap eqtl score",
+                                            tbl.track[, c("chrom", "start", "end", "score")],
+                                            color="blue", autoscale=TRUE)
+        displayTrack(igv, track)
+        }
+
+        #     select * from eqtl2 where chrom='chr7' and hg38 > 100357719 and hg38 < 100357756 and genesymbol ='PILRA';
+
 
     tbl.tms <- tms$get.tmsTable()
-    tbl.tms.filtered <- subset(tbl.tms, (ampad.eqtl & gtex.eqtl) & abs(cor.all) > 0.3 & fimo_pvalue < 5e-3)
+    eqtl.score.threshold <- 25
+    tbl.tms.filtered <- subset(tbl.tms,
+                               abs(ampad.eqtl.score) > eqtl.score.threshold &
+                               abs(gtex.eqtl.score)  > eqtl.score.threshold &
+                               abs(cor.all) > 0.3)# &
+                                    #fimo_pvalue < 5e-4)
+
     dim(tbl.tms.filtered)
+    nrow(subset(tbl.tms.filtered, tf=="TEAD1"))
     tms$set.tmsFilteredTable(tbl.tms.filtered)
     x <- tms$get.tmsFilteredTable()
     tf.candidates <- unique(tbl.tms.filtered$tf)
@@ -96,7 +133,8 @@ viz <- function()
 
   ghdb <- GeneHancerDB()
   tbl.gh <- retrieveEnhancersFromDatabase(ghdb, targetGene, tissues="all")
-  tbl.gh$score <- asinh(tbl.gh$combinedscore)
+  #tbl.gh$score <- asinh(tbl.gh$combinedscore)
+  tbl.gh$score <- tbl.gh$combinedscore
   track <- DataFrameQuantitativeTrack("GH-all", tbl.gh[, c("chrom", "start", "end", "score")],
                                        autoscale=TRUE, color="brown")
   displayTrack(igv, track)
