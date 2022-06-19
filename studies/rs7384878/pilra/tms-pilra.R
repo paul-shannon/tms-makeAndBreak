@@ -34,12 +34,13 @@ tag.snp <- "rs7384878"
 tag.snp.chrom <- "chr7"
 tag.snp.loc <- 100334426
 #----------------------------------------------------------------------------------------------------
-run <- function()
+run <- function(breakMotifs=FALSE)
 {
-    browser()
     chrom <- tag.snp.chrom
     center <- tag.snp.loc
-    shoulder <- 100000 #000
+    center <- 100357740
+    shoulder <- 1000
+    roi <- sprintf("%s:%d-%d", chrom, center-shoulder, center+shoulder)
     #roi <- getGenomicRegion(igv)
     new.start <- center - shoulder
     new.end   <- center + shoulder
@@ -83,8 +84,8 @@ run <- function()
     tbl.tms <- tms$get.tmsTable()
     eqtl.score.threshold <- 25
     tbl.tms.filtered <- subset(tbl.tms,
-                               abs(ampad.eqtl.score) > eqtl.score.threshold &
-                               abs(gtex.eqtl.score)  > eqtl.score.threshold &
+                               (abs(ampad.eqtl.score) > eqtl.score.threshold &
+                               abs(gtex.eqtl.score)  > eqtl.score.threshold) &
                                abs(cor.all) > 0.3)# &
                                     #fimo_pvalue < 5e-4)
 
@@ -98,23 +99,31 @@ run <- function()
     tbl.trena <- tms$get.trenaTable()
     head(tbl.trena, n=20)
 
-    tms$breakMotifs(tbl.trena[1:10,], tbl.tms)
-    breaks <- tms$get.motifBreaks()
-    tbl.breaks <- tms$get.breaksTable()
+    tbl.breaks <- data.frame()
+    breaks <- GRanges()
+    if(breakMotifs){
+       tms$breakMotifs(tbl.trena[1:10,], tbl.tms)
+       breaks <- tms$get.motifBreaks()
+       tbl.breaks <- tms$get.breaksTable()
+       }
 
     timestamp <- sub(" ", "", tolower(format(Sys.time(), "%Y.%b.%e-%H:%M")))
 
     filename <- sprintf("%s-%s-results-%s.RData", targetGene, tms$get.current.GTEx.eqtl.tissue(), timestamp)
-    save(tbl.trena, tbl.tms, tbl.tms.filtered, breaks, tbl.breaks, file=filename)
+    message(sprintf("saving to %s", filename))
+    save(roi, tbl.trena, tbl.tms, tbl.tms.filtered, breaks, tbl.breaks, file=filename)
+    return(filename)
 
 } # run
 #----------------------------------------------------------------------------------------------------
-viz <- function()
+viz <- function(filename)
 {
-  filename <- "PILRA-GTEx_V8.Brain_Cerebellar_Hemisphere-results.RData"
   print(load(filename))
-  igv <- start.igv(targetGene, "hg38")
-  showGenomicRegion(igv, "chr7:99,915,322-100,857,434")
+
+  if(!exists("igv")){
+      igv <- start.igv(targetGene, "hg38")
+      showGenomicRegion(igv, "chr7:99,915,322-100,857,434")
+      }
 
   tbl.track <- data.frame(chrom=tag.snp.chrom,
                           start=tag.snp.loc-1,

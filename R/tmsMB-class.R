@@ -221,15 +221,15 @@ tmsMB = R6Class("tmsMB",
            private$tbl.tmsFiltered
            },
         #------------------------------------------------------------
-        breakMotifs = function(tbl.trena, tbl.tms){
+        breakMotifs = function(tbl.trena, tbl.tms, tbl.eqtls){
             tbl.tfbs <- subset(tbl.tms, tf %in% tbl.trena$gene)
             dim(tbl.tfbs)
 
             gr.tfbs <- GRanges(tbl.tfbs[, c("chrom", "start", "end")])
-            tbl.gtex.eqtls <- self$get.gtex.eqtls()
-            tbl.eqtls.tmp <- tbl.gtex.eqtls[, c("chrom", "hg38", "hg38", "rsid")]
+            #tbl.eqtls <- self$get.ampad.eqtls()
+            tbl.eqtls.tmp <- tbl.eqtls[, c("chrom", "hg38", "hg38", "rsid")]
             colnames(tbl.eqtls.tmp) <- c("chrom", "start", "end", "rsid")
-            tbl.eqtls.tmp$chrom <- sprintf("chr%s", tbl.eqtls.tmp$chrom)
+            #tbl.eqtls.tmp$chrom <- sprintf("chr%s", tbl.eqtls.tmp$chrom)
             gr.eqtls <- GRanges(tbl.eqtls.tmp)
             tbl.ov <- as.data.frame(findOverlaps(gr.eqtls, gr.tfbs))
             dim(tbl.ov)
@@ -287,6 +287,7 @@ tmsMB = R6Class("tmsMB",
                 gr.tms <- GRanges(tbl.tms.gene)
                 tbl.ov <- as.data.frame(findOverlaps(gr.breaks, gr.tms))
                 tbl.new <- data.frame()
+                message(sprintf("--- found %d breaks in tfbs for %s", nrow(tbl.ov), gene))
                 if(nrow(tbl.ov) > 0){
                     tbl.new <- tbl.breaks.gene[unique(tbl.ov[,1]),]
                     dups <- which(duplicated(tbl.new[, c("chrom", "start", "SNP_id", "geneSymbol")]))
@@ -312,7 +313,8 @@ tmsMB = R6Class("tmsMB",
                 # motifbreakR results
                 #-----------------------------------------------------
 
-            if(!all(is.null(tbl.breaks))){
+            browser()
+            if(nrow(tbl.breaks) > 0){
                 tbl.breaks$score <- with(tbl.breaks, pctRef * pctDelta * 100)
                 dups <- which(duplicated(tbl.breaks[, c("SNP_id", "geneSymbol")]))
                 if(length(dups) > 0)
@@ -340,6 +342,7 @@ tmsMB = R6Class("tmsMB",
             title <- current.tissue
             title <- sub("Brain_", "", title)
             track <- DataFrameQuantitativeTrack(title, tbl.eqtl, autoscale=TRUE, color="black")
+            browser()
             displayTrack(igv, track)
 
                 #----------------------------------------------------

@@ -1,6 +1,5 @@
 library(RUnit)
 library(TrenaProjectAD)
-# source("TFAM-class.R")
 source("tmsMB-class.R")
 #----------------------------------------------------------------------------------------------------
 runTests <- function()
@@ -17,48 +16,91 @@ runTests <- function()
 
 } # runTests
 #----------------------------------------------------------------------------------------------------
-# chr7:100,304,414-100,343,410   good region for TEAD1 regulating PILRA
-targetGene <- "TFAM"
+targetGene <- "PILRA"
+tag.snp <- "rs7384878"
+tag.snp.chrom <- "chr7"
+tag.snp.loc <- 100334426
+
+#----------------------------------------------------------------------------------------------------
 trenaProject <- TrenaProjectAD()
-data.dir <- "~/github/gwasExplorer/studies/tfam/data"
+data.dir <- "~/github/tms-makeAndBreak/studies/rs7384878/shared"
 if(!exists("tbl.fimo")){
-   tbl.fimo <- get(load(file.path(data.dir, "tbl.fimo.TFAM.RData")))
+   tbl.fimo <- get(load(file.path(data.dir, "tbl.fimo.PILRA.RData")))
+   #tbl.ampad.eqtls.raw <- get(load(file.path(data.dir, "ampad.eqtls.pilra.plusMinus.1M.RData")))
+   #tbl.ampad.eqtls <- subset(tbl.ampad.eqtls.raw, study=="ampad-rosmap" & pvalue < 0.001)
    tbl.ampad.eqtls.raw <- get(load(file.path(data.dir, "tbl.eqtls.rosmap.RData")))
-   tbl.ampad.eqtls <- subset(tbl.ampad.eqtls.raw, study=="ampad-rosmap" & pvalue < 0.05)
-   tbl.gtex.eqtls.raw <- get(load(file.path(data.dir, "tbl.eqtls.6.tissues-chr10:57385407-59385407.2022-06-08.08:03:52")))
-   tbl.gtex.eqtls <- subset(tbl.gtex.eqtls.raw, gene==targetGene & pvalue < 0.05)
-   data.dir <- "~/github/TrenaProjectAD/inst/extdata/genomicRegions"
-   filename <- "mayoAllPeaks.merged.96064x4.RData"
-   tbl.mayoAtac <- get(load(file.path(data.dir, filename)))
+   tbl.ampad.eqtls <- subset(tbl.ampad.eqtls.raw, genesymbol==targetGene & pvalue < 0.001)
+   tbl.gtex.eqtls.raw <- get(load(file.path(data.dir, "gtex-eqtls-tbl.RData")))
+   tbl.gtex.eqtls <- subset(tbl.gtex.eqtls.raw, gene==targetGene & pvalue < 0.001)
+   #data.dir <- "~/github/TrenaProjectAD/inst/extdata/genomicRegions"
+   #filename <- "mayoAllPeaks.merged.96064x4.RData"
+   #tbl.mayoAtac <- get(load(file.path(data.dir, filename)))
     #   data.dir <- "~/github/TrenaProjectAD/inst/extdata/genomicRegions"
     # filename <- "boca-hg38-consensus-ATAC.RData"
-   tbl.oc <- tbl.mayoAtac
+   tbl.oc <- data.frame() #tbl.mayoAtac
+   tbl.haploreg <- read.table(file.path(data.dir, "haploreg.tsv"), sep="\t", as.is=TRUE, header=TRUE, nrow=-1)
+   tms <- tmsMB$new(targetGene, trenaProject, tbl.fimo, tbl.gtex.eqtls, tbl.ampad.eqtls, tbl.oc)
    }
 
-tfam <- tmsMB$new(targetGene, trenaProject, tbl.fimo, tbl.gtex.eqtls, tbl.ampad.eqtls, tbl.oc)
+#----------------------------------------------------------------------------------------------------
+overview.viz <- function()
+{
+if(!exists("igv")){
+    igv <- start.igv("PILRA", "hg38")
+    showGenomicRegion(igv, "chr7:100,304,414-100,343,410") #   good region for TEAD1 regulating PILRA
+    }
+
+   tbl.track <- data.frame(chrom=tag.snp.chrom,
+                           start=tag.snp.loc-1,
+                           end=tag.snp.loc,
+                           name=tag.snp,
+                           stringsAsFactors=FALSE)
+   track <- DataFrameAnnotationTrack(tag.snp, tbl.track, color="red", trackHeight=25)
+   displayTrack(igv, track)
+
+  tbl.track <- tbl.haploreg[, c("chrom", "hg38", "hg38", "Rsquared")]
+  colnames(tbl.track) <- c("chrom", "start", "end", "score")
+  tbl.track$chrom <- paste0("chr", tbl.track$chrom)
+  tbl.track$start <- tbl.track$start - 1
+  track <- DataFrameQuantitativeTrack("haploreg", tbl.track, autoscale=TRUE, color="darkgray")
+  displayTrack(igv, track)
+
+  ghdb <- GeneHancerDB()
+  tbl.gh <- retrieveEnhancersFromDatabase(ghdb, targetGene, tissues="all")
+  #tbl.gh$score <- asinh(tbl.gh$combinedscore)
+  tbl.gh$score <- tbl.gh$combinedscore
+  track <- DataFrameQuantitativeTrack("GH-all", tbl.gh[, c("chrom", "start", "end", "score")],
+                                       autoscale=TRUE, color="brown")
+  displayTrack(igv, track)
+
+  tbl.track <- subset(tbl.ampad.eqtls, genesymbol==targetGene)
+  track <- GWASTrack("rosmap eqtls", tbl.track, chrom.col=1, pos.col=3, pval.col=5)
+  displayTrack(igv, track)
+
+} # overview.viz
 #----------------------------------------------------------------------------------------------------
 test_ctor <- function()
 {
     message(sprintf("--- test_ctor"))
 
-    checkTrue(all(c("R6", "tmsMB") %in% class(tfam)))
+    checkTrue(all(c("R6", "tmsMB") %in% class(tms)))
 
-    region <- tfam$getFimoGenomicRegion()
+    region <- tms$getFimoGenomicRegion()
     checkEquals(region$start, 57391973)
     checkEquals(region$end,   59392030)
     checkEquals(region$width.kb, 2000.06)
 
-    region <- tfam$getGTEx.eqtl.genomicRegion()
+    region <- tms$getGTEx.eqtl.genomicRegion()
     checkEquals(region$start, 57386057)
     checkEquals(region$end,   59384352)
     checkEquals(region$width.kb, 1998.3)
 
-    region <- tfam$getAMPAD.eqtl.genomicRegion()
+    region <- tms$getAMPAD.eqtl.genomicRegion()
     checkEquals(region$start, 57391973)
     checkEquals(region$end,   59392030)
     checkEquals(region$width.kb, 2000.06)
 
-    #study.region <- tfam$getStudyRegion()
+    #study.region <- tms$getStudyRegion()
     #checkEquals(study.region$start, 58385244)
     #checkEquals(study.region$end, 58385416)
 
@@ -68,15 +110,15 @@ test_setStudyRegion <- function()
 {
     message(sprintf("--- test_setStudyRegion"))
 
-    study.region <- tfam$getStudyRegion()
+    study.region <- tms$getStudyRegion()
     checkEquals(study.region$chrom, "chr10")
     checkEquals(study.region$start, 57391973)
     checkEquals(study.region$end,   59392030)
 
     new.start <- 58384216
     new.end   <- 58390229
-    tfam$setStudyRegion(chrom="chr10", start=new.start, end=new.end)
-    new.region <- tfam$getStudyRegion()
+    tms$setStudyRegion(chrom="chr10", start=new.start, end=new.end)
+    new.region <- tms$getStudyRegion()
 
     checkEquals(new.region$chrom, "chr10")
     checkEquals(new.region$start, new.start)
@@ -88,11 +130,11 @@ test_setStudyRegion <- function()
 test_tissue <- function()
 {
     message(sprintf("--- test_tissue"))
-    tissues <- tfam$getGTEx.eqtl.tissues()
+    tissues <- tms$getGTEx.eqtl.tissues()
     checkEquals(length(tissues), 6)
     for(tissue in tissues){
-       tfam$set.current.GTEx.eqtl.tissue(tissue)
-       checkEquals(tfam$get.current.GTEx.eqtl.tissue(), tissue)
+       tms$set.current.GTEx.eqtl.tissue(tissue)
+       checkEquals(tms$get.current.GTEx.eqtl.tissue(), tissue)
        } # for tissue
 
     TRUE
@@ -104,19 +146,19 @@ test_addEqtlsToTMStable <- function()
 {
     message(sprintf("--- test_addEqtlsToTMStable"))
 
-    tissues <- tfam$getGTEx.eqtl.tissues()
-    tfam$set.current.GTEx.eqtl.tissue(tissues[1])
+    tissues <- tms$getGTEx.eqtl.tissues()
+    tms$set.current.GTEx.eqtl.tissue(tissues[1])
     new.start <- 58383120
     new.end   <- 58383200
-    tfam$setStudyRegion(chrom="chr10", start=new.start, end=new.end)
+    tms$setStudyRegion(chrom="chr10", start=new.start, end=new.end)
 
-    study.region <- tfam$getStudyRegion()
-    tfam$run.tms()
-    tbl.tms <- tfam$get.tmsTable()
+    study.region <- tms$getStudyRegion()
+    tms$run.tms()
+    tbl.tms <- tms$get.tmsTable()
     dim(tbl.tms)
 
-    tfam$add.eqtls.toTmsTable()
-    tbl.tms <- tfam$get.tmsTable()
+    tms$add.eqtls.toTmsTable()
+    tbl.tms <- tms$get.tmsTable()
     expected.new.columns <- c("ampad.eqtl.pval", "ampad.eqtl.beta", "gtex.eqtl.pval", "gtex.eqtl.beta",
                               "ampad.eqtl.score", "gtex.eqtl.score")
     checkTrue(all(expected.new.columns %in% colnames(tbl.tms)))
@@ -141,22 +183,22 @@ test_run.tms <- function()
 {
     message(sprintf("--- test_run.tms"))
 
-    tissues <- tfam$getGTEx.eqtl.tissues()
-    tfam$set.current.GTEx.eqtl.tissue(tissues[1])
+    tissues <- tms$getGTEx.eqtl.tissues()
+    tms$set.current.GTEx.eqtl.tissue(tissues[1])
 
     new.start <- 58385244
     new.end   <- 58385416
-    tfam$setStudyRegion(chrom="chr10", start=new.start, end=new.end)
+    tms$setStudyRegion(chrom="chr10", start=new.start, end=new.end)
 
-    tfam$run.tms()
-    tbl.tms <- tfam$get.tmsTable()
+    tms$run.tms()
+    tbl.tms <- tms$get.tmsTable()
     checkEquals(ncol(tbl.tms), 16)
     checkTrue(nrow(tbl.tms) > 500 & nrow(tbl.tms) < 650)
     new.cols <- setdiff(colnames(tbl.tms), colnames(tbl.fimo))
     checkTrue(all(c("chip","phast7","phast100","gh","oc","tss","cor.all") %in% new.cols))
 
-    tfam$add.eqtls.toTmsTable()
-    tbl.tms <- tfam$get.tmsTable()
+    tms$add.eqtls.toTmsTable()
+    tbl.tms <- tms$get.tmsTable()
     checkEquals(ncol(tbl.tms), 22)
 
 } # test_run.tms
@@ -164,49 +206,49 @@ test_run.tms <- function()
 test_run.trena <- function()
 {
     message(sprintf("--- test_run.trena"))
-    tbl.tms <- tfam$get.tmsTable()
+    tbl.tms <- tms$get.tmsTable()
     dim(tbl.tms)
     tbl.tms.filtered <- subset(tbl.tms,
                                abs(ampad.eqtl.score) > 1 &
                                abs(gtex.eqtl.score) > 1 & abs(cor.all) > 0.3)
     dim(tbl.tms.filtered)
-    tfam$set.tmsFilteredTable(tbl.tms.filtered)
+    tms$set.tmsFilteredTable(tbl.tms.filtered)
     tf.candidates <- unique(tbl.tms.filtered$tf)
     if(length(tf.candidates) > 0)
-        tfam$run.trena(tf.candidates)
-    tbl.trena <- tfam$get.trenaTable()
+        tms$run.trena(tf.candidates)
+    tbl.trena <- tms$get.trenaTable()
     checkEquals(dim(tbl.trena), c(4,8))
 
 } # test_run.trena
 #----------------------------------------------------------------------------------------------------
 run.small <- function(shoulder=86)
 {
-    tfam <- tmsMB$new(targetGene, trenaProject, tbl.fimo, tbl.gtex.eqtls, tbl.ampad.eqtls, tbl.oc)
+    tms <- tmsMB$new(targetGene, trenaProject, tbl.fimo, tbl.gtex.eqtls, tbl.ampad.eqtls, tbl.oc)
     chrom <- "chr10"
     center <- 58385330
     shoulder <- 2000
     new.start <- center - shoulder
     new.end   <- center + shoulder
-    tfam$setStudyRegion(chrom=chrom, start=new.start, end=new.end)
+    tms$setStudyRegion(chrom=chrom, start=new.start, end=new.end)
 
-    study.region <- tfam$getStudyRegion()
+    study.region <- tms$getStudyRegion()
     checkEquals(study.region$width.kb, 4)
-    tissues <- tfam$getGTEx.eqtl.tissues()
-    tfam$set.current.GTEx.eqtl.tissue(tissues[1])
+    tissues <- tms$getGTEx.eqtl.tissues()
+    tms$set.current.GTEx.eqtl.tissue(tissues[1])
 
-    tfam$run.tms()
-    tfam$add.eqtls.toTmsTable()
+    tms$run.tms()
+    tms$add.eqtls.toTmsTable()
 
-    tbl.tms <- tfam$get.tmsTable()
+    tbl.tms <- tms$get.tmsTable()
     tbl.tms.filtered <- subset(tbl.tms, ampad.eqtl.pval < 1 & gtex.eqtl.pval < 1 & abs(cor.all) > 0.4)
-    tfam$set.tmsFilteredTable(tbl.tms.filtered)
-    tfam$get.tmsFilteredTable()
+    tms$set.tmsFilteredTable(tbl.tms.filtered)
+    tms$get.tmsFilteredTable()
     tf.candidates <- unique(tbl.tms.filtered$tf)
-    tfam$run.trena(tf.candidates)
-    tbl.trena <- tfam$get.trenaTable()
+    tms$run.trena(tf.candidates)
+    tbl.trena <- tms$get.trenaTable()
     checkTrue(all(c("SP4", "GABPA") %in% tbl.trena$gene))
 
-    return(tfam)
+    return(tms)
 
 } # run.small
 #----------------------------------------------------------------------------------------------------
@@ -215,14 +257,14 @@ test_run.small <- function()
 {
     message(sprintf("--- test_run.small"))
 
-    tfam.small <- run.small()
-    study.region <- tfam.small$getStudyRegion()
+    tms.small <- run.small()
+    study.region <- tms.small$getStudyRegion()
     checkTrue(study.region$width.kb < 5)
 
-    tbl.tms <- tfam.small$get.tmsFilteredTable()
+    tbl.tms <- tms.small$get.tmsFilteredTable()
     checkEquals(dim(tbl.tms), c(6, 22))
 
-    tbl.trena <- tfam.small$get.trenaTable()
+    tbl.trena <- tms.small$get.trenaTable()
     checkEquals(dim(tbl.trena), c(5, 8))
     checkTrue(all(c("SP4", "HES7", "GABPA") %in% tbl.trena$gene))
     checkEquals(tbl.trena$gene, c("SP4", "GABPA", "PLAG1"))
@@ -235,20 +277,20 @@ test_run.2k.break.motifs <- function()
 {
     message(sprintf("--- test_run.2k.break.motifs"))
 
-    tfam <- tmsMB$new(targetGene, trenaProject, tbl.fimo, tbl.gtex.eqtls, tbl.ampad.eqtls, tbl.oc)
+    tms <- tmsMB$new(targetGene, trenaProject, tbl.fimo, tbl.gtex.eqtls, tbl.ampad.eqtls, tbl.oc)
     new.start <- 58384447
     new.end   <- 58386447
-    tfam$setStudyRegion(chrom="chr10", start=new.start, end=new.end)
+    tms$setStudyRegion(chrom="chr10", start=new.start, end=new.end)
 
-    study.region <- tfam$getStudyRegion()
+    study.region <- tms$getStudyRegion()
     checkTrue(study.region$width.kb >= 2)
-    tissues <- tfam$getGTEx.eqtl.tissues()
-    tfam$set.current.GTEx.eqtl.tissue(tissues[1])
+    tissues <- tms$getGTEx.eqtl.tissues()
+    tms$set.current.GTEx.eqtl.tissue(tissues[1])
 
-    tfam$run.tms()
-    tfam$add.eqtls.toTmsTable()
+    tms$run.tms()
+    tms$add.eqtls.toTmsTable()
 
-    tbl.tms <- tfam$get.tmsTable()
+    tbl.tms <- tms$get.tmsTable()
     dim(tbl.tms)
     tbl.tms.filtered <- subset(tbl.tms,
                                abs(ampad.eqtl.score) > 1 &
@@ -256,19 +298,19 @@ test_run.2k.break.motifs <- function()
 
 
     dim(tbl.tms.filtered)
-    tfam$set.tmsFilteredTable(tbl.tms.filtered)
-    tfam$get.tmsFilteredTable()
+    tms$set.tmsFilteredTable(tbl.tms.filtered)
+    tms$get.tmsFilteredTable()
     tf.candidates <- unique(tbl.tms.filtered$tf)
     checkTrue(length(tf.candidates) == 5)
-    tfam$run.trena(tf.candidates)
-    tbl.trena <- tfam$get.trenaTable()
+    tms$run.trena(tf.candidates)
+    tbl.trena <- tms$get.trenaTable()
     checkEquals(dim(tbl.trena), c(5, 8))
     checkEquals(all(tbl.trena$gene %in% c("HES7","ZEB1","TGIF1","E2F4","USF2")))
 
     checkEquals(tbl.trena$tfbs, c(1,1,1,1,1))
-    tfam$breakMotifs(tbl.trena, tbl.tms)
-    checkEquals(length(tfam$get.motifBreaks()), 12)
-    tbl.breaks <- tfam$get.breaksTable()
+    tms$breakMotifs(tbl.trena, tbl.tms)
+    checkEquals(length(tms$get.motifBreaks()), 12)
+    tbl.breaks <- tms$get.breaksTable()
     checkEquals(dim(tbl.breaks), c(5, 9))
     checkTrue("HES7" %in% tbl.breaks$geneSymbol)
 
@@ -278,25 +320,25 @@ test_run.large <- function()
 {
     message(sprintf("--- test_run.large"))
 
-    tfam <- tmsMB$new(targetGene, trenaProject, tbl.fimo, tbl.gtex.eqtls, tbl.ampad.eqtls, tbl.oc)
-    study.region <- tfam$getStudyRegion()
+    tms <- tmsMB$new(targetGene, trenaProject, tbl.fimo, tbl.gtex.eqtls, tbl.ampad.eqtls, tbl.oc)
+    study.region <- tms$getStudyRegion()
     checkTrue(study.region$width.kb > 2000)  # 2M
-    tissues <- tfam$getGTEx.eqtl.tissues()
-    tfam$set.current.GTEx.eqtl.tissue(tissues[1])
+    tissues <- tms$getGTEx.eqtl.tissues()
+    tms$set.current.GTEx.eqtl.tissue(tissues[1])
 
-    tfam$run.tms()
-    tfam$add.eqtls.toTmsTable()
+    tms$run.tms()
+    tms$add.eqtls.toTmsTable()
 
-    tbl.tms <- tfam$get.tmsTable()
+    tbl.tms <- tms$get.tmsTable()
     dim(tbl.tms)
     tbl.tms.filtered <- subset(tbl.tms, ampad.eqtl & gtex.eqtl & abs(cor.all) > 0.4)
     dim(tbl.tms.filtered)
-    tfam$set.tmsFilteredTable(tbl.tms.filtered)
+    tms$set.tmsFilteredTable(tbl.tms.filtered)
     tf.candidates <- unique(tbl.tms.filtered$tf)
     length(tf.candidates)
     checkTrue(length(tf.candidates) > 30)
-    tfam$run.trena(tf.candidates)
-    tbl.trena <- tfam$get.trenaTable()
+    tms$run.trena(tf.candidates)
+    tbl.trena <- tms$get.trenaTable()
     checkEquals(dim(tbl.trena), c(42, 8))
     checkTrue(all(tbl.trena$tfbs > 0))
 
@@ -345,6 +387,57 @@ test_viz <- function()
 
 
 } # test_viz
+#----------------------------------------------------------------------------------------------------
+test_ZCWPW1 <- function()
+{
+   message(sprintf("--- test_ZCWPW1"))
+
+   targetGene <- "ZCWPW1"
+   trenaProject <- TrenaProjectAD()
+
+   data.dir <- "~/github/tms-makeAndBreak/studies/rs7384878/shared"
+   tbl.fimo <- get(load(file.path(data.dir, "tbl.fimo.PILRA.RData")))
+   tbl.gtex.eqtls.raw <- get(load(file.path(data.dir, "gtex-eqtls-tbl.RData")))
+   tbl.gtex.eqtls <- subset(tbl.gtex.eqtls.raw, gene==targetGene & pvalue < 0.001)
+   full.path <- file.path(data.dir, "tbl.eqtls.rosmap.RData")
+   file.exists(full.path)
+   tbl.rosmap.eqtls.raw <- get(load(file.path(data.dir, "tbl.eqtls.rosmap.RData")))
+   tbl.rosmap.eqtls <- subset(tbl.rosmap.eqtls.raw, pvalue < 0.001)
+   dim(tbl.rosmap.eqtls)   # 6262 12
+   tbl.oc <- data.frame() #tbl.mayoAtac
+
+   tms <- tmsMB$new(targetGene, trenaProject, tbl.fimo, tbl.gtex.eqtls, tbl.rosmap.eqtls, tbl.oc)
+
+   roi <- list(chrom="chr7", start=100088993, end=100600689, width=511697,
+               string="chr7:100,088,993-100,600,689")
+
+   tms$setStudyRegion(chrom=roi$chrom, start=roi$start, end=roi$end)
+
+   study.region <- tms$getStudyRegion()
+   checkTrue(study.region$width.kb > 500)
+   tissues <- tms$getGTEx.eqtl.tissues()
+   tms$set.current.GTEx.eqtl.tissue(tissues[1])
+
+   tms$run.tms()
+   tms$add.eqtls.toTmsTable()
+
+   tbl.tms <- tms$get.tmsTable()
+   pval.threshold <- 1e-6
+   tbl.tms.filtered <-
+      subset(tbl.tms, ampad.eqtl.pval < 1 & gtex.eqtl.pval < pval.threshold & abs(cor.all) > 0.4)
+   dim(tbl.tms.filtered)
+   length(unique(tbl.tms.filtered$tf))
+   tms$set.tmsFilteredTable(tbl.tms.filtered)
+   # tms$get.tmsFilteredTable()
+   tf.candidates <- unique(tbl.tms.filtered$tf)
+   print(length(tf.candidates))
+   tms$run.trena(tf.candidates)
+   tbl.trena <- tms$get.trenaTable()
+   head(tbl.trena, n=10)
+
+   tms$breakMotifs(tbl.trena, tbl.tms.filtered, tbl.rosmap.eqtls)
+
+} # test_ZCWPW1
 #----------------------------------------------------------------------------------------------------
 if(!interactive())
     runTests()
