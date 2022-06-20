@@ -436,6 +436,7 @@ test_ZCWPW1 <- function()
    head(tbl.trena, n=10)
 
    tms$breakMotifs(tbl.trena, tbl.tms.filtered, tbl.rosmap.eqtls)
+   tbl.breaks <- tms$get.breaksTable()
 
 } # test_ZCWPW1
 #----------------------------------------------------------------------------------------------------

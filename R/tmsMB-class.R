@@ -131,17 +131,33 @@ tmsMB = R6Class("tmsMB",
         add.eqtls.toTmsTable = function(){
             tbl.tms <- private$tbl.tms
 
+               # give default values, corrected below when overlaps are found
+            pval <- rep(1, nrow(tbl.tms))
+            beta <- rep(0, nrow(tbl.tms))
+            score <- rep(0, nrow(tbl.tms))
+
+            private$tbl.tms$ampad.eqtl.pval <- pval
+            private$tbl.tms$ampad.eqtl.beta <- beta
+            private$tbl.tms$ampad.eqtl.scorel <- score
+
+            private$tbl.tms$gtex.eqtl.pval <- pval
+            private$tbl.tms$gtex.eqtl.beta <- beta
+            private$tbl.tms$gtex.eqtl.score <- score
+
             gr.tms <- GRanges(tbl.tms)
             tbl.ae <- subset(private$tbl.ampad.eqtls, hg38 > private$study.region$start &
                                                       hg38 < private$study.region$end)
+            if(nrow(tbl.ae) == 0) return()
             gr.ampad <- with(tbl.ae, GRanges(seqnames=chrom[1], IRanges(hg38)))
             tbl.ge <- subset(private$tbl.gtex.eqtls, id==private$current.tissue &
                                                      hg38 > private$study.region$start &
                                                      hg38 < private$study.region$end)
-            gr.gtex <- with(tbl.ge, GRanges(seqnames=sprintf("chr%s", chrom[1]), IRanges(hg38)))
+            if(nrow(tbl.ge) == 0) return()
+            #gr.gtex <- with(tbl.ge, GRanges(seqnames=sprintf("chr%s", chrom[1]), IRanges(hg38)))
+            gr.gtex <- with(tbl.ge, GRanges(seqnames=chrom[1], IRanges(hg38)))
 
             tbl.ov <- as.data.frame(findOverlaps(gr.ampad, gr.tms))
-
+            if(nrow(tbl.ov) == 0) return()
                 #------------------------------------
                 # first the ampad eqtl pvalue & beta
                 #------------------------------------
@@ -245,12 +261,22 @@ tmsMB = R6Class("tmsMB",
 
             mdb.human <- query(MotifDb, "sapiens", c("jaspar2022", "hocomoco-core-A"))
             motifs.selected <- query(mdb.human, andStrings="sapiens", orStrings=tfs.oi)
-            message(sprintf("--- about to look up %d rsids, may take 5 minutes", length(rsids.oi)))
-            x <- system.time(snps.gr <- snps.from.rsid(rsid = rsids.oi,
-                                                       dbSNP=SNPlocs.Hsapiens.dbSNP155.GRCh38,
-                                                       search.genome=BSgenome.Hsapiens.UCSC.hg38))
-            message(sprintf("--- snps.gr for %d snps obtained, elapsed time: %f", length(rsids.oi), x[["elapsed"]]))
-
+            message(sprintf("--- about to look up %d rsids", length(rsids.oi)))
+                # get fast reproducible results by doing a throw-away call beforehand:
+                #   t0 <- system.time(x0 <- snpsById(SNPlocs.Hsapiens.dbSNP155.GRCh38, "rs7796006"))
+            lookup.rsid <- function(rsid){
+                snps.from.rsid(rsid,
+                               dbSNP=SNPlocs.Hsapiens.dbSNP155.GRCh38,
+                               search.genome=BSgenome.Hsapiens.UCSC.hg38)
+                }
+            t2 <- system.time({
+                snps.gr.list <-lapply(rsids.oi, lookup.rsid)
+                snps.gr <- unlist(as(snps.gr.list, "GRangesList"))
+                })
+            #  x <- system.time(snps.gr <- snps.from.rsid(rsid = rsids.oi,
+            #                                             dbSNP=SNPlocs.Hsapiens.dbSNP155.GRCh38,
+            #                                           search.genome=BSgenome.Hsapiens.UCSC.hg38))
+            message(sprintf("--- snps.gr for %d snps obtained, elapsed time: %f", length(rsids.oi), t2[["elapsed"]]))
 
             bpparam <- MulticoreParam(workers=3)
             message(sprintf("--- calling motifbreakR"))
@@ -313,7 +339,6 @@ tmsMB = R6Class("tmsMB",
                 # motifbreakR results
                 #-----------------------------------------------------
 
-            browser()
             if(nrow(tbl.breaks) > 0){
                 tbl.breaks$score <- with(tbl.breaks, pctRef * pctDelta * 100)
                 dups <- which(duplicated(tbl.breaks[, c("SNP_id", "geneSymbol")]))
@@ -342,7 +367,6 @@ tmsMB = R6Class("tmsMB",
             title <- current.tissue
             title <- sub("Brain_", "", title)
             track <- DataFrameQuantitativeTrack(title, tbl.eqtl, autoscale=TRUE, color="black")
-            browser()
             displayTrack(igv, track)
 
                 #----------------------------------------------------
