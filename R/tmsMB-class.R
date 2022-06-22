@@ -35,6 +35,7 @@ tmsMB = R6Class("tmsMB",
                    tbl.tmsFiltered=NULL,   # has just the TFs and regions used by trena
                    etx=NULL,
                    mtx.rna=NULL,
+                   known.snps=NULL,
                    motifBreaks=NULL,
                    tbl.breaks=NULL
                    ),
@@ -46,18 +47,19 @@ tmsMB = R6Class("tmsMB",
          #' @param id character, an indentifier for this object
          #' @return a new instance of the class
         initialize = function(targetGene, trenaProject, tbl.fimo, tbl.gtex.eqtls, tbl.ampad.eqtls,
-                              tbl.oc){
+                              tbl.oc, known.snps){
             private$targetGene <- targetGene
             private$trenaProject <- trenaProject
             private$tbl.fimo <- tbl.fimo
             private$tbl.gtex.eqtls <- tbl.gtex.eqtls
             private$tbl.ampad.eqtls <- tbl.ampad.eqtls
             private$gtex.eqtl.tissues <- sort(unique(tbl.gtex.eqtls$id))
-            private$current.tissue <- private$gtex.eqtl.tissues[1]
+            private$current.tissue <- private$gtex.eqtl.tissues[1] # default, likely changed
             private$tbl.oc <- tbl.oc
             private$study.region <- self$getFimoGenomicRegion()
             private$etx <- EndophenotypeExplorer$new(targetGene, "hg38", vcf.project="ADNI",
                                                      initialize.snpLocs=FALSE)
+            private$known.snps <- known.snps
             },
         #------------------------------------------------------------
         setStudyRegion = function(chrom, start, end){
@@ -197,6 +199,11 @@ tmsMB = R6Class("tmsMB",
             private$tbl.tms
             },
         #------------------------------------------------------------
+        get.knownSnps = function(){
+            private$known.snps
+            },
+
+        #------------------------------------------------------------
         get.motifBreaks = function(){
             private$motifBreaks
             },
@@ -238,6 +245,7 @@ tmsMB = R6Class("tmsMB",
            },
         #------------------------------------------------------------
         breakMotifs = function(tbl.trena, tbl.tms, tbl.eqtls){
+            #browser()
             tbl.tfbs <- subset(tbl.tms, tf %in% tbl.trena$gene)
             dim(tbl.tfbs)
 
@@ -259,7 +267,8 @@ tmsMB = R6Class("tmsMB",
             rsids.oi <- unique(tbl.eqtls.ov$rsid)
             length(rsids.oi)
 
-            mdb.human <- query(MotifDb, "sapiens", c("jaspar2022", "hocomoco-core-A"))
+            #mdb.human <- query(MotifDb, "sapiens", c("jaspar2022", "hocomoco-core-A"))
+            mdb.human <- query(MotifDb, c("sapiens", "jaspar2022"))
             motifs.selected <- query(mdb.human, andStrings="sapiens", orStrings=tfs.oi)
             message(sprintf("--- about to look up %d rsids", length(rsids.oi)))
                 # get fast reproducible results by doing a throw-away call beforehand:
@@ -269,16 +278,26 @@ tmsMB = R6Class("tmsMB",
                                dbSNP=SNPlocs.Hsapiens.dbSNP155.GRCh38,
                                search.genome=BSgenome.Hsapiens.UCSC.hg38)
                 }
+            if(length(private$known.snps) == 0){
+               new.rsids <- rsids.oi
+            } else{
+                new.rsids <- setdiff(rsids.oi, names(private$known.snps))
+                }
+            printf("--- looking up %d new snps, with %d already known",
+                   length(new.rsids), length(private$known.snps))
             t2 <- system.time({
-                snps.gr.list <-lapply(rsids.oi, lookup.rsid)
+                snps.gr.list <-lapply(new.rsids, lookup.rsid)
                 snps.gr <- unlist(as(snps.gr.list, "GRangesList"))
                 })
-            #  x <- system.time(snps.gr <- snps.from.rsid(rsid = rsids.oi,
-            #                                             dbSNP=SNPlocs.Hsapiens.dbSNP155.GRCh38,
-            #                                           search.genome=BSgenome.Hsapiens.UCSC.hg38))
-            message(sprintf("--- snps.gr for %d snps obtained, elapsed time: %f", length(rsids.oi), t2[["elapsed"]]))
+            private$known.snps <- c(private$known.snps, snps.gr)
+            #browser()
+            if(length(private$known.snps) > 0)
+               snps.gr <- subset(private$known.snps, SNP_id %in% rsids.oi)
+            attributes(snps.gr)$genome.package <- attributes(BSgenome.Hsapiens.UCSC.hg38)$pkgname
+            message(sprintf("--- snps.gr for %d snps obtained, elapsed time: %f",
+                            length(rsids.oi), t2[["elapsed"]]))
 
-            bpparam <- MulticoreParam(workers=3)
+            bpparam <- MulticoreParam(workers=20)
             message(sprintf("--- calling motifbreakR"))
 
             results <- motifbreakR(snpList = snps.gr,
@@ -290,40 +309,43 @@ tmsMB = R6Class("tmsMB",
                                    BPPARAM = bpparam,
                                    verbose=TRUE)
             private$motifBreaks <- results
-            tbl.breaks <- as.data.frame(results, row.names=NULL)
-            colnames(tbl.breaks)[1] <- "chrom"
-            tbl.breaks$chrom <- as.character(tbl.breaks$chrom)
-            tbl.breaks <- subset(tbl.breaks, effect=="strong")
-            tbl.breaks$start <- tbl.breaks$start - 1
-            tbl.breaks$pctDelta <- with(tbl.breaks, pctAlt-pctRef)
-            new.order <- order(abs(tbl.breaks$pctDelta), decreasing=TRUE)
-            tbl.breaks <- tbl.breaks[new.order,]
-            motifbreakR.coi <- c("chrom", "start", "end", "SNP_id", "geneSymbol", "providerName", "pctRef", "pctAlt", "pctDelta")
-            tbl.breaks <- tbl.breaks[, motifbreakR.coi]
+            tbl.breaks.tfbs <- data.frame()
+            if(length(results) > 0){
+               tbl.breaks <- as.data.frame(results, row.names=NULL)
+               colnames(tbl.breaks)[1] <- "chrom"
+               tbl.breaks$chrom <- as.character(tbl.breaks$chrom)
+               tbl.breaks <- subset(tbl.breaks, effect=="strong")
+               tbl.breaks$start <- tbl.breaks$start - 1
+               tbl.breaks$pctDelta <- with(tbl.breaks, pctAlt-pctRef)
+               new.order <- order(abs(tbl.breaks$pctDelta), decreasing=TRUE)
+               tbl.breaks <- tbl.breaks[new.order,]
+               motifbreakR.coi <- c("chrom", "start", "end", "SNP_id", "geneSymbol", "providerName", "pctRef", "pctAlt", "pctDelta")
+               tbl.breaks <- tbl.breaks[, motifbreakR.coi]
 
                 # motifbreakR will find fresh binding sites, possibly for genes for which we did not
                 # so traverse these break regions, make sure they overlap with regions we found for
                 # those genes
-            gc <- sort(intersect(tbl.tms$tf, tbl.breaks$geneSymbol))
-            tbls <- list()
-            for(gene in gc){
-                tbl.breaks.gene <- subset(tbl.breaks, geneSymbol==gene)
-                gr.breaks <- GRanges(tbl.breaks.gene)
-                tbl.tms.gene <- subset(tbl.tms, tf==gene)
-                gr.tms <- GRanges(tbl.tms.gene)
-                tbl.ov <- as.data.frame(findOverlaps(gr.breaks, gr.tms))
-                tbl.new <- data.frame()
-                message(sprintf("--- found %d breaks in tfbs for %s", nrow(tbl.ov), gene))
-                if(nrow(tbl.ov) > 0){
-                    tbl.new <- tbl.breaks.gene[unique(tbl.ov[,1]),]
-                    dups <- which(duplicated(tbl.new[, c("chrom", "start", "SNP_id", "geneSymbol")]))
-                    if(length(dups) > 0)
-                        tbl.new <- tbl.new[-dups,]
-                    }  # if tbl.ov
-                tbls[[gene]] <- tbl.new
-                } # for gene
-            tbl.breaks.tfbs <- do.call(rbind, tbls)
-            rownames(tbl.breaks.tfbs) <- NULL
+               gc <- sort(intersect(tbl.tms$tf, tbl.breaks$geneSymbol))
+               tbls <- list()
+               for(gene in gc){
+                   tbl.breaks.gene <- subset(tbl.breaks, geneSymbol==gene)
+                   gr.breaks <- GRanges(tbl.breaks.gene)
+                   tbl.tms.gene <- subset(tbl.tms, tf==gene)
+                   gr.tms <- GRanges(tbl.tms.gene)
+                   tbl.ov <- as.data.frame(findOverlaps(gr.breaks, gr.tms))
+                   tbl.new <- data.frame()
+                   message(sprintf("--- found %d breaks in tfbs for %s", nrow(tbl.ov), gene))
+                   if(nrow(tbl.ov) > 0){
+                       tbl.new <- tbl.breaks.gene[unique(tbl.ov[,1]),]
+                       dups <- which(duplicated(tbl.new[, c("chrom", "start", "SNP_id", "geneSymbol")]))
+                       if(length(dups) > 0)
+                           tbl.new <- tbl.new[-dups,]
+                   }  # if tbl.ov
+                   tbls[[gene]] <- tbl.new
+               } # for gene
+               tbl.breaks.tfbs <- do.call(rbind, tbls)
+               rownames(tbl.breaks.tfbs) <- NULL
+               } # if results > 0
             message(sprintf("--- saving tbl.breaks, %d x %d", nrow(tbl.breaks.tfbs), ncol(tbl.breaks.tfbs)))
             private$tbl.breaks <- tbl.breaks.tfbs
             },  # breakMotifs

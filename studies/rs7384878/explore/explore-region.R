@@ -68,7 +68,7 @@ if(!exists("tbl.gwas3")){ # this 235 row, 215 rsid table, combines posthuma, sch
     }
 
 if(!exists("tbl.gwascat.ad")){
-   data.dir <- system.file(package="igvR", "extdata", "gwas")
+   data.dir <- "~/github/TrenaProjectAD/inst/extdata/gwasLoci"
    file.exists(data.dir)
    file <- "alzheimerSubsetOfGWASCatatalog-12jun2022.RData"
    full.path <- file.path(data.dir, file)
@@ -82,13 +82,13 @@ if(!exists("tbl.gwascat.ad")){
        }
    }
 
-if(!exists("tbl.rsids")){  # with mayo & rosmap scores for association of each variant to extreme braak score
-   data.dir <- "~/github/gwasExplorer/explore/newScore/doesLinkagePredictBraakscSeparatedEnrichment"
-   filename <- "tbl.rsids.summary.Tue.May.31.2022-13:26:55-hetAndHomSeparate.RData"
-   full.path <- file.path(data.dir, filename)
-   stopifnot(file.exists(full.path))
-   tbl.rsids <- get(load(full.path))
-   }
+# if(!exists("tbl.rsids")){  # with mayo & rosmap scores for association of each variant to extreme braak score
+#    data.dir <- "~/github/gwasExplorer/explore/newScore/doesLinkagePredictBraakscSeparatedEnrichment"
+#    filename <- "tbl.rsids.summary.Tue.May.31.2022-13:26:55-hetAndHomSeparate.RData"
+#    full.path <- file.path(data.dir, filename)
+#    stopifnot(file.exists(full.path))
+#    tbl.rsids <- get(load(full.path))
+#    }
 
 if(!exists("tbl.rosmap.nearby")){
    data.dir <- "../shared"
@@ -137,11 +137,13 @@ if(!exists("tbl.fimo")){
     tbl.fimo <- get(load(file.path("../shared", "tbl.fimo.PILRA.RData")))
     gr.fimo <- GRanges(tbl.fimo)
     }
-
+#snpLocs.initialized <- FALSE
 #----------------------------------------------------------------------------------------------------
 initialize.snpLocs <- function()   # load into memory just once, saving time in motifbreakR prep
 {
-  t0 <- system.time(x0 <- snpsById(SNPlocs.Hsapiens.dbSNP155.GRCh38, "rs7796006"))
+    t0 <- system.time(x0 <- snpsById(SNPlocs.Hsapiens.dbSNP155.GRCh38, "rs7796006"))
+    printf("--- snpLocs initialized in %d seconds", as.integer(t0[["elapsed"]]))
+    return(TRUE)
 }
 #----------------------------------------------------------------------------------------------------
 showTracks <- function()
@@ -209,56 +211,10 @@ pilra.neighborhood <- function()
 
 } # pilra.neighborhood
 #----------------------------------------------------------------------------------------------------
-build.model.old <- function(gene, gtex.tissue, roi)
-{
-   tbl.eqtls <- subset(tbl.rosmap.nearby, genesymbol==gene & hg38 > roi$start & hg38 < roi$end)
-   gr.eqtl <- with(tbl.eqtls, GRanges(seqnames=chrom[1], IRanges(start=hg38)))
-   tbl.ov <- as.data.frame(findOverlaps(gr.eqtl, gr.fimo))
-   dim(tbl.ov)
-   tbl.fimo.sub <- tbl.fimo[tbl.ov[,2],]
-   tms <- TMS$new(TrenaProjectAD(), gene, tbl.fimo.sub, quiet=FALSE)
-   tms$scoreFimoTFBS()   # chip, conservation, genehancer, genic annotations, distance to tss
-   etx <- EndophenotypeExplorer$new(gene, "hg38", vcf.project="AMPAD")
-   names(etx$get.rna.matrix.codes())
-   mtx.rna <- etx$get.rna.matrix(gtex.tissue)
-   tms$add.tf.mrna.correlations(mtx.rna, featureName="cor.all")
+build.model <- function(targetGene, gtex.tissue, roi,
+                        eqtl.pval.threshold, rna.correlation.threshold,
+                        tbl.oc, known.snps)
 
-   tbl.tms <- tms$getTfTable()
-   candidate.tfs <- subset(tbl.tms, abs(cor.all) > 0.3)$tf
-   length(candidate.tfs)
-   tbl.trena <- tms$build.trena.model(candidate.tfs, mtx.rna)
-   tbl.trena$rfNorm <- with(tbl.trena, rfScore/max(rfScore))
-   tfs.oi <- subset(tbl.trena, abs(betaLasso) > 0.1 | rfNorm > 0.5)$gene
-   rsids <- tbl.eqtls$rsid
-   tbls.breaks <- list()
-   for(tf in tfs.oi){
-      printf("--- starting on tf %s for targetGene %s, %d rsids", tf, gene, length(rsids))
-      motifs <- query(MotifDb, c(tf, "sapiens", "jaspar2022"))
-      snps.gr <- snps.from.rsid(rsids,
-                                dbSNP=SNPlocs.Hsapiens.dbSNP155.GRCh38,
-                                search.genome=BSgenome.Hsapiens.UCSC.hg38)
-      results <- motifbreakR(snpList = snps.gr,
-                             filterp = TRUE,
-                             pwmList = motifs,
-                             show.neutral=FALSE,
-                             method = c("ic", "log", "notrans")[1],
-                             bkg = c(A=0.25, C=0.25, G=0.25, T=0.25),
-                             BPPARAM = SerialParam(),
-                             verbose=TRUE)
-      tbl.breaks <- as.data.frame(results, row.names=NULL)
-      tbl.breaks <- subset(tbl.breaks, effect=="strong")
-      tbl.breaks$pctDelta <- tbl.breaks$pctAlt - tbl.breaks$pctRef
-      tbls.breaks[[tf]] <- tbl.breaks
-      print(tbl.breaks[, c("SNP_id", "geneSymbol", "pctRef", "pctAlt", "pctDelta")])
-      browser(); xyz <- 99
-      } # for tf
-
-   return(tbls.breaks)
-
-
-} # build.model.old
-#----------------------------------------------------------------------------------------------------
-build.model <- function(targetGene, gtex.tissue, roi, eqtl.pval.threshold, rna.correlation.threshold)
 {
    printf("--- building model of %s in %s over %dk", targetGene, gtex.tissue, as.integer(roi$width/1000))
    trenaProject <- TrenaProjectAD()
@@ -268,21 +224,25 @@ build.model <- function(targetGene, gtex.tissue, roi, eqtl.pval.threshold, rna.c
    tbl.gtex.eqtls.raw$chrom <- paste0("chr", tbl.gtex.eqtls.raw$chrom)
    tbl.gtex.eqtls <- subset(tbl.gtex.eqtls.raw, gene==targetGene & pvalue < 0.001)
    dim(tbl.gtex.eqtls)
+       # is the requested tissue present in the filtered tbl.gtex.eqtls?
+   if(!gtex.tissue %in% tbl.gtex.eqtls$id){
+       printf("--- no eqtls for %s in tissue %s", targetGene, gtex.tissue)
+       return(list())
+       }
    full.path <- file.path(data.dir, "tbl.eqtls.rosmap.RData")
    file.exists(full.path)
    tbl.rosmap.eqtls.raw <- get(load(file.path(data.dir, "tbl.eqtls.rosmap.RData")))
    tbl.rosmap.eqtls <- subset(tbl.rosmap.eqtls.raw, pvalue < 0.001)
    dim(tbl.rosmap.eqtls)   # 6262 12
-   tbl.oc <- data.frame() #tbl.mayoAtac
 
-   tms <- tmsMB$new(targetGene, trenaProject, tbl.fimo, tbl.gtex.eqtls, tbl.rosmap.eqtls, tbl.oc)
+   tms <- tmsMB$new(targetGene, trenaProject, tbl.fimo, tbl.gtex.eqtls,
+                    tbl.rosmap.eqtls, tbl.oc, known.snps)
 
    trenaProject <- TrenaProjectAD()
    tms$setStudyRegion(chrom=roi$chrom, start=roi$start, end=roi$end)
 
    study.region <- tms$getStudyRegion()
-   tissues <- tms$getGTEx.eqtl.tissues()
-   checkTrue(gtex.tissue %in% tissues)
+   checkTrue(gtex.tissue %in% gtex.brain.tissues)
    tms$set.current.GTEx.eqtl.tissue(gtex.tissue)
 
    tms$run.tms()
@@ -307,15 +267,20 @@ build.model <- function(targetGene, gtex.tissue, roi, eqtl.pval.threshold, rna.c
       head(tbl.trena, n=10)
       tms$breakMotifs(head(tbl.trena, n=12), tbl.tms.filtered, tbl.rosmap.eqtls)
       tbl.breaks <- tms$get.breaksTable()
-         # we are (mostly) interested in the strongest breaks, high negative pctDelta
-      new.order <- order(tbl.breaks$pctDelta, decreasing=FALSE)
-      tbl.breaks <- tbl.breaks[new.order,]
+      if(nrow(tbl.breaks) > 0){
+           # we are (mostly) interested in the strongest breaks, high negative pctDelta
+         new.order <- order(tbl.breaks$pctDelta, decreasing=FALSE)
+         tbl.breaks <- tbl.breaks[new.order,]
+         } # tbl.breaks
       }
 
+   new.known.snps <- tms$get.knownSnps()
+   #browser()
    result <- list(#tms=tbl.tms,
                   tms.filtered=tbl.tms.filtered,
                   trena=tbl.trena,
                   tf.candidates=tf.candidates,
+                  known.snps=new.known.snps,
                   tbl.breaks=tbl.breaks,
                   breaks=tms$get.motifBreaks(),
                   roi=roi,
@@ -332,6 +297,7 @@ test_build.model <- function()
 {
    message(sprintf("--- test_build.model"))
 
+   if(!snpLocs.initialized) snpLocs.initialized <- initialize.snpLocs()
          #-------------------------------------------------------
          # a 10k region with weak trena, good breaks of those tfs
          #-------------------------------------------------------
@@ -339,8 +305,17 @@ test_build.model <- function()
    roi.10k <- list(chrom="chr7", start=100048000, end=100058000, width=10001, string="chr7:100,048,000-100,058,000")
    printf("roi.10k width: %dk", as.integer((roi.10k$end - roi.10k$start)/1000, digits=1))
 
+   targetGene <- "PMS2P1"
+   x <- build.model(targetGene, "GTEx_V8.Brain_Cortex", roi.10k, eqtl.pval.threshold=1e-3,
+                    rna.correlation.threshold=0.2)
+   checkEquals(x, list())
+   targetGene <- "STAG3"
+   x <- build.model(targetGene, "GTEx_V8.Brain_Cortex", roi.10k, eqtl.pval.threshold=1e-3,
+                    rna.correlation.threshold=0.2, tbl.oc=data.frame(), known.snps=known.snps)
+
+   
    targetGene <- "ZSCAN21"
-   x <- build.model(targetGene, "GTEx_V8.Brain_Cerebellum", roi.10k, eqtl.pval.threshold=1e-3, rna.correlation.threshold=0.2)
+   #x <- build.model(targetGene, "GTEx_V8.Brain_Cortex", roi.10k, eqtl.pval.threshold=1e-5, rna.correlation.threshold=0.2)
    save(x, file="tmp-test.RData")
    checkTrue(nrow(x$trena) > 6)
    checkTrue(all(c("MLX", "MITF", "NEUROD1") %in% intersect(x$trena$gene, x$tbl.breaks$geneSymbol)))
@@ -355,17 +330,22 @@ test_build.model <- function()
    roi.528k <- list(chrom="chr7", start=100076962, end=100605694, width=528733, string="chr7:100,076,962-100,605,694")
    printf("roi.528k width: %dk", as.integer((roi.528k$end - roi.528k$start)/1000, digits=1))
 
-   x <- build.model(targetGene, "GTEx_V8.Brain_Cerebellum", roi.120k, eqtl.pval.threshold=1e-3, rna.correlation.threshold=0.2)
+   #x <- build.model(targetGene, "GTEx_V8.Brain_Cerebellum", roi.120k, eqtl.pval.threshold=1e-3, rna.correlation.threshold=0.2)
    save(x, file="tmp-test.RData")
 
    genes <- c("PILRB","STAG3L5P","PILRA","ZCWPW1","MEPCE","PMS2P1","ZSCAN21","NYAP1","STAG3","MBLAC1")
-
-   for(targetGene in genes[2:10]){
+   known.snps <- GRanges()
+   for(targetGene in genes[8]){
        models <- list()
        t3 <- system.time({
-           for(tissue in gtex.brain.tissues){
-               x <- build.model(targetGene, tissue, roi.528k, eqtl.pval.threshold=1e-5, rna.correlation.threshold=0.2)
+           for(tissue in gtex.brain.tissues[1:2]){
+               #x <- build.model(targetGene, tissue, roi.528k, eqtl.pval.threshold=1e-5, rna.correlation.threshold=0.2)
+               x <- build.model(targetGene, tissue, roi.10k,
+                                eqtl.pval.threshold=1e-3, rna.correlation.threshold=0.2,
+                                tbl.oc=data.frame(), known.snps=known.snps)
                title <- sprintf("%s-%s", targetGene, tissue)
+               known.snps <- x$known.snps
+               printf("--- %s %s, known.snps now total %d", targetGene, tissue, length(known.snps))
                models[[title]] <- x
            } # for tissue
        }) # system.time
@@ -378,25 +358,68 @@ test_build.model <- function()
 
 } # test_build.model
 #----------------------------------------------------------------------------------------------------
+test_zscan21_2.tissues <- function()
+{
+   roi.10k <- list(chrom="chr7", start=100048000, end=100058000, width=10001, string="chr7:100,048,000-100,058,000")
+   genes <- "ZSCAN21"
+   known.snps <- GRanges()
+   for(targetGene in genes){
+       models <- list()
+       t3 <- system.time({
+           for(tissue in gtex.brain.tissues[1:2]){
+               #x <- build.model(targetGene, tissue, roi.528k, eqtl.pval.threshold=1e-5, rna.correlation.threshold=0.2)
+               x <- build.model(targetGene, tissue, roi.10k,
+                                eqtl.pval.threshold=1e-3, rna.correlation.threshold=0.2,
+                                tbl.oc=data.frame(), known.snps=known.snps)
+               title <- sprintf("%s-%s", targetGene, tissue)
+               known.snps <- x$known.snps
+               printf("--- %s %s, known.snps now total %d", targetGene, tissue, length(known.snps))
+               models[[title]] <- x
+           } # for tissue
+       }) # system.time
+       printf("%d models of %s in %d seconds", length(models), targetGene, as.integer(t3[["elapsed"]]))
+
+       timestamp <- sub(" ", "", tolower(format(Sys.time(), "%Y.%b.%e-%H:%M")))
+       filename <- sprintf("%s-models-%s.RData", targetGene, timestamp)
+       save(models, file=filename)
+       } # for targetGene
+   lapply(models, function(model) head(model$trena, n=10))
+   lapply(models, function(model) head(model$tbl.breaks, n=10))
+   browser()
+   xyz <- 99
+
+} # test_zscan21_2.tissues
+#----------------------------------------------------------------------------------------------------
 run.all <- function()
 {
-    # set igv's region to include only tag.snp's LD region, also considering the gwascat.ad
-    # variants, and the rosmapeQTLS
-    # for rs7384878 (pilra-region) it is chr7:100,088,993-100,600,689
+   initialize.snpLocs()
+   roi.10k <- list(chrom="chr7", start=100048000, end=100058000, width=10001, string="chr7:100,048,000-100,058,000")
+   roi.120k <- list(chrom="chr7", start=100011184, end=100131671, width=120488, string="chr7:100,011,184-100,131,671")
+   roi.528k <- list(chrom="chr7", start=100076962, end=100605694, width=528733, string="chr7:100,076,962-100,605,694")
 
-   roi <- list(chrom="chr7", start=100088993, end=100600689, width=511697,
-               string="chr7:100,088,993-100,600,689")
-   tbl.affected <- identify.affected.genes()
-   median <- median(tbl$sum.sig.x.beta)
-   tbl.affected.top <- subset(tbl.affected, sum.sig.x.beta >= median)
-   goi <- as.character(tbl.affected.top$gene)
+   roi <- roi.528k
+   genes <- c("PILRB","STAG3L5P","PILRA","ZCWPW1","MEPCE","PMS2P1","ZSCAN21","NYAP1","STAG3","MBLAC1")
+   known.snps <- GRanges()
 
-    for(gene in goi){
-       for(tissue in gtex.brain.tissues){
-          printf("------------- buliding model for %s in %s", gene, tissue)
-          build.model(gene, tissue, roi)
-          } # for tissue
-        } # for gene
+   for(targetGene in genes[9]){
+       models <- list()
+       t3 <- system.time({
+          for(tissue in gtex.brain.tissues[3]){
+             x <- build.model(targetGene, tissue, roi,
+                              eqtl.pval.threshold=1e-5,
+                              rna.correlation.threshold=0.2,
+                              tbl.oc=data.frame(), known.snps=known.snps)
+             title <- sprintf("%s-%s", targetGene, tissue)
+             known.snps <- x$known.snps
+             printf("--- %s %s, known.snps now total %d", targetGene, tissue, length(known.snps))
+             models[[title]] <- x
+            } # for tissue
+        }) # system.time
+       printf("%d models of %s in %d seconds", length(models), targetGene, as.integer(t3[["elapsed"]]))
+       timestamp <- sub(" ", "", tolower(format(Sys.time(), "%Y.%b.%e-%H:%M")))
+       filename <- sprintf("%s-models-%s-%s.RData", targetGene, "roi.528k", timestamp)
+       save(models, file=filename)
+       } # for targetGene
 
 } # run.all
 #----------------------------------------------------------------------------------------------------
@@ -405,4 +428,5 @@ view.gtex.eqtls <- function()
 
 } # veiw.gtex.eqtls
 #----------------------------------------------------------------------------------------------------
-
+if(!interactive())
+   run.all()
