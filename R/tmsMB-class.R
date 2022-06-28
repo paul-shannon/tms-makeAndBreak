@@ -35,9 +35,9 @@ tmsMB = R6Class("tmsMB",
                    tbl.tmsFiltered=NULL,   # has just the TFs and regions used by trena
                    etx=NULL,
                    mtx.rna=NULL,
-                   known.snps=NULL,
+                   known.snps=GRanges(),
                    motifBreaks=NULL,
-                   tbl.breaks=NULL
+                   tbl.breaks=data.frame()
                    ),
 
     #--------------------------------------------------------------------------------
@@ -290,7 +290,6 @@ tmsMB = R6Class("tmsMB",
                 snps.gr <- unlist(as(snps.gr.list, "GRangesList"))
                 })
             private$known.snps <- c(private$known.snps, snps.gr)
-            #browser()
             if(length(private$known.snps) > 0)
                snps.gr <- subset(private$known.snps, SNP_id %in% rsids.oi)
             attributes(snps.gr)$genome.package <- attributes(BSgenome.Hsapiens.UCSC.hg38)$pkgname
