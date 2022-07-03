@@ -14,7 +14,7 @@ rsid.oi <- tag.snp
 tag.snp.hg38 <- 105749599
 shoulder <- 500000
 #------------------------------------------------------------------------------------------
- 
+
 #------------------------------------------------------------------------------------------
 gtex.brain.tissues <- c("GTEx_V8.Brain_Cerebellar_Hemisphere",
                         "GTEx_V8.Brain_Cerebellum",
@@ -47,7 +47,7 @@ if(!exists("tbl.boca")){
    filename <- "boca-hg38-consensus-ATAC.RData"
    tbl.boca <- get(load(file.path(data.dir, filename)))
    }
-    
+
 if(!exists("tbl.haploreg")){
     data.dir <- "../shared"
     tbl.haploreg <-
@@ -333,10 +333,10 @@ build.model <- function(targetGene, gtex.tissue, roi,
    filter <- correlated.expression &
        (ampad.or.gtex.eqtls | (openChromatin & chip & strong.ampad.eqtl & genehancer))
    print(table(filter))
-                       
+
        #subset(tbl.tms, (ampad.eqtl.pval < 1 & gtex.eqtl.pval < eqtl.pval.threshold) &
        #                abs(cor.all) >= rna.correlation.threshold)
-   
+
    tbl.tms.filtered <- tbl.tms[which(filter),]
    print(dim(tbl.tms.filtered))
 
@@ -360,7 +360,7 @@ build.model <- function(targetGene, gtex.tissue, roi,
              new.order <- order(tbl.breaks$pctDelta, decreasing=FALSE)
              tbl.breaks <- tbl.breaks[new.order,]
           } # nrow tbl.breaks
-          } # is.null 
+          } # is.null
       } # tf.candidates
 
    new.known.snps <- tms$get.knownSnps()
@@ -405,7 +405,7 @@ test_mappedGene <- function()
    x <- build.model(gene, tissue, roi.cherry,
                     eqtl.pval.threshold=1e-3, rna.correlation.threshold=0.2,
                     tbl.oc=tbl.boca, known.snps=known.snps)
-   
+
 } # test_mappedGene
 #----------------------------------------------------------------------------------------------------
 combine.tables <- function(tbl.trena, tbl.tms, tbl.breaks, targetGene, TF)
@@ -563,7 +563,7 @@ summarize.models <- function()
       models <- get(load(models.all[[targetGene]]))
       model.names <- names(models)
       for(model.name in model.names){
-          i <- i + 1          
+          i <- i + 1
           tbl <- data.frame(targetGene=targetGene, tissue=model.name, score=0, stringsAsFactors=FALSE)
           model <- models[[model.name]]
           if(length(model) >= 0){
@@ -604,7 +604,7 @@ summarize.models <- function()
    tbl.summary <- as.data.frame(mtx)
    tbl.summary$sum <- as.integer(rowSums(tbl.summary))
    new.order <- order(tbl.summary$sum, decreasing=TRUE)
-   tbl.summary[new.order,]    
+   tbl.summary[new.order,]
 
 } # summarize.models
 #----------------------------------------------------------------------------------------------------
@@ -620,7 +620,7 @@ run.all <- function()
 
    roi <- roi.1m
 
-    #  
+    #
     #          Var1 Freq
     #  1 C2orf49-DT  159    # name not recognized by all parts.  needs work
     #  2      ECRG4   88    # gtex and ampad prefer C2orf40
