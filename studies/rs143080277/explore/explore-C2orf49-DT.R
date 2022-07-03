@@ -14,7 +14,7 @@ rsid.oi <- tag.snp
 tag.snp.hg38 <- 105749599
 shoulder <- 500000
 #------------------------------------------------------------------------------------------
- 
+
 #------------------------------------------------------------------------------------------
 gtex.brain.tissues <- c("GTEx_V8.Brain_Cerebellar_Hemisphere",
                         "GTEx_V8.Brain_Cerebellum",
@@ -27,12 +27,14 @@ gtex.brain.tissues <- c("GTEx_V8.Brain_Cerebellar_Hemisphere",
 if(!exists("igv") & FALSE){
     igv <- start.igv("all")
     tbl.track <- data.frame(chrom=tag.snp.chrom,
-                            start=tag.snp.loc-1,
-                            end=tag.snp.loc,
+                            start=tag.snp.hg38-1,
+                            end=tag.snp.hg38,
                             name=tag.snp,
                             stringsAsFactors=FALSE)
     track <- DataFrameAnnotationTrack(tag.snp, tbl.track, color="red", trackHeight=25)
     displayTrack(igv, track)
+    showGenomicRegion(igv, "C2orf49")
+    zoomOut(igv)
     }
 
 if(!exists("tbl.fimo.raw")){
@@ -47,7 +49,7 @@ if(!exists("tbl.boca")){
    filename <- "boca-hg38-consensus-ATAC.RData"
    tbl.boca <- get(load(file.path(data.dir, filename)))
    }
-    
+
 if(!exists("tbl.haploreg")){
     data.dir <- "../shared"
     tbl.haploreg <-
@@ -111,12 +113,14 @@ if(!exists("tbl.eqtl.rosmap")){
    full.path <- file.path(data.dir, "tbl.eqtls.rosmap.RData")
    file.exists(full.path)
    tbl.eqtl.rosmap.raw <- get(load(file.path(data.dir, "tbl.eqtls.rosmap.RData")))
-   "C2orf40" %in% tbl.eqtl.rosmap.raw$genesymbol
+   dim(tbl.eqtl.rosmap.raw)
+   "ECRG4" %in% tbl.eqtl.rosmap.raw$genesymbol
    dim(tbl.eqtl.rosmap.raw)
    tbl.eqtl.rosmap <- subset(tbl.eqtl.rosmap.raw, pvalue < 0.001)
    dim(tbl.eqtl.rosmap)   # 6262 12
+   tbl.tmp <- subset(tbl.eqtl.rosmap, genesymbol=="ECRG4")
    if(FALSE){
-      track <- GWASTrack("rosmap eQTLs", tbl.eqtl.rosmap, trackHeight=100,
+      track <- GWASTrack("rosmap eQTLs", tbl.tmp, trackHeight=100,
                           chrom.col=1, pos.col=3, pval.col=5)
       displayTrack(igv, track)
       }
@@ -156,6 +160,34 @@ if(!exists("tbl.fimo")){
     gr.fimo <- GRanges(tbl.fimo)
     }
 
+if(!exists("tbl.eqtl.c2orf49dt")){
+    tbl.eqtl.c2orf49dt <- subset(tbl.eqtl.rosmap, genesymbol=="C2orf49-DT")
+    tbl.eqtl.c2orf49dt$score <- with(tbl.eqtl.c2orf49dt, -log10(pvalue) * beta)
+    tbl.track <- tbl.eqtl.c2orf49dt[, c("chrom", "hg38", "hg38", "score")]
+    colnames(tbl.track) <- c("chrom", "start", "end", "score")
+    tbl.track$start <- tbl.track$start - 1
+    if(FALSE){
+       track <- DataFrameQuantitativeTrack("rosmap eqtl", tbl.track, autoscale=FALSE, color="black", min=-7, max=7)
+       displayTrack(igv, track)
+       }
+    }
+
+if(!exists("tbl.eqtl.c2orf49dt.gtex")){
+    tbl.eqtl.c2orf49dt.gtex <- subset(tbl.eqtl.gtex, gene=="RP11-332H14.2")
+    dim(tbl.eqtl.c2orf49dt.gtex)
+    tbl.eqtl.c2orf49dt.gtex$score <- with(tbl.eqtl.c2orf49dt.gtex, -log10(pvalue) * beta)
+    tbl.track <- tbl.eqtl.c2orf49dt.gtex[, c("chrom", "hg38", "hg38", "score")]
+    colnames(tbl.track) <- c("chrom", "start", "end", "score")
+    tbl.track$start <- tbl.track$start - 1
+    if(FALSE){
+       track <- DataFrameQuantitativeTrack("gtex eqtl", tbl.track, autoscale=FALSE, color="black", min=-7, max=7)
+       displayTrack(igv, track)
+       }
+    }
+
+
+
+
 # see which genes have strong pval eqtls in the region covered by rs143080277
 #------------------------------------------------------------------------------------------
 # restrict region to 82kb region chr7:100,333,519-100,416,094, where LD r^2 >= 0.5, and gwascat.ad
@@ -180,7 +212,7 @@ as.data.frame(sort(table(subset(tbl.eqtl.rosmap, chrom==tag.snp.chrom &
                                                   hg38 <= tag.snp.hg38 + shoulder &
                                                   pvalue < 1e-3)$genesymbol), decreasing=TRUE))
 #         Var1 Freq
-# 1 C2orf49-DT  159
+# 1 C2orf49-DT.GTEX  159
 # 2      ECRG4   88
 # 3       NCK2   53
 # 4       UXS1   17
@@ -302,6 +334,7 @@ build.model <- function(targetGene, gtex.tissue, roi,
                    length(tbl.eqtl.gtex$rsid),
                    length(tbl.eqtl.rosmap$rsid),
                    length(intersect(tbl.eqtl.gtex$rsid, tbl.eqtl.rosmap$rsid))))
+
    tms <- tmsMB$new(targetGene, trenaProject, tbl.fimo, tbl.eqtl.gtex,
                     tbl.eqtl.rosmap, tbl.oc, known.snps)
 
@@ -322,21 +355,25 @@ build.model <- function(targetGene, gtex.tissue, roi,
    ampad.or.gtex.eqtls <- with(tbl.tms,
                                 ampad.eqtl.pval < 1 | (gtex.eqtl.pval < eqtl.pval.threshold))
    print(table(ampad.and.gtex.eqtls))
-   print(table(ampad.and.gtex.eqtls))
+   print(table(ampad.or.gtex.eqtls))
    strong.ampad.eqtl <- tbl.tms$ampad.eqtl.score > 1
+   print(table(strong.ampad.eqtl))
    openChromatin <- tbl.tms$oc
+   print(table(openChromatin))
    chip <- tbl.tms$chip
+   if(is.null(chip)) chip <- rep(FALSE, length(openChromatin))
+   print(table(chip))
    correlated.expression <- with(tbl.tms, abs(cor.all) >= rna.correlation.threshold)
    genehancer <- tbl.tms$gh > 1
-
+   table(genehancer)
 
    filter <- correlated.expression &
-       (ampad.or.gtex.eqtls | (openChromatin & chip & strong.ampad.eqtl & genehancer))
+       (ampad.or.gtex.eqtls | (openChromatin & strong.ampad.eqtl & genehancer))
    print(table(filter))
-                       
+
        #subset(tbl.tms, (ampad.eqtl.pval < 1 & gtex.eqtl.pval < eqtl.pval.threshold) &
        #                abs(cor.all) >= rna.correlation.threshold)
-   
+
    tbl.tms.filtered <- tbl.tms[which(filter),]
    print(dim(tbl.tms.filtered))
 
@@ -360,7 +397,7 @@ build.model <- function(targetGene, gtex.tissue, roi,
              new.order <- order(tbl.breaks$pctDelta, decreasing=FALSE)
              tbl.breaks <- tbl.breaks[new.order,]
           } # nrow tbl.breaks
-          } # is.null 
+          } # is.null
       } # tf.candidates
 
    new.known.snps <- tms$get.knownSnps()
@@ -381,32 +418,69 @@ build.model <- function(targetGene, gtex.tissue, roi,
 
 } # build.model
 #----------------------------------------------------------------------------------------------------
-# actulall doing not the mapped gene - NCK2 - but the name-in-transition gene, C2orf40
-test_mappedGene <- function()
+# C2orf49-DT, sometimes knonw as RP11-332H14.2, or ENSG00000272994
+# this function tests the use of modified GTEx expression and eQTL tables to use the
+# name favored by amp-ad.
+test_c2orf49dt <- function()
 {
-   roi.cherry <- list(chrom="chr2", start=106068700, end=106114200)
+
+   message(sprintf("--- test_c2orf49dt"))
+   gene.name.1 <- "RP11-332H14.2"   # used by gtex
+   gene.name.2 <- "C2orf49-DT"      # used by genehancer and rosmap
+   ensg <-  "ENSG00000272994"       #
+
+   targetGene <- gene.name.2
+   checkGeneNameFoundInAllSources(targetGene)
+
+   roi.cherry <- list(chrom="chr2", start=105243579, end=105410755)
    roi.cherry$width <- with(roi.cherry, 1+end-start)
+   roi.cherry$width  # 167k
 
+   roi.224k <- list(chrom="chr2", start=105236169, end=105460720)
+   roi.224k$width <- with(roi.224k, 1+end-start)
+   roi.224k$width  # 224,552
 
-   roi.1m <- list(chrom="chr2",  start=105224001, end=106224000)
-   roi.1m$width <- with(roi.1m, 1 + end - start)
-
-   roi.50k <- list(chrom="chr2", start=105720001, end=105770000, width=50000)
-   roi.90k <- list(chrom="chr2", start=105812531, end=105902530)
-   roi.90k$wdith <- with(roi.90k, 1 + end - start)
-   roi.90k
-
-   gene <- "NCK2"
-   gene <- "C2orf40"
    tissue <- "GTEx_V8.Brain_Cerebellar_Hemisphere"
 
    known.snps <- GRanges()
 
-   x <- build.model(gene, tissue, roi.cherry,
+   x <- build.model(targetGene, tissue, roi.224k,
                     eqtl.pval.threshold=1e-3, rna.correlation.threshold=0.2,
                     tbl.oc=tbl.boca, known.snps=known.snps)
-   
-} # test_mappedGene
+
+   known.snps <- x$known.snps  # keep these for running again
+
+} # test_c2orf49dt
+#----------------------------------------------------------------------------------------------------
+# ECRG4: Augurin, neuropeptide hormone activity, cellular senescence, central nervous system development
+# used to be called "C2orf40".   make sure the modern name can be used throughout
+test_c2orf40 <- function()
+{
+   message(sprintf("--- test_c2orf40"))
+
+   old <- "C2orf40"         # older alias
+   new <- "ECRG4"           # preferred, new HUGO
+
+   checkGeneNameFoundInAllSources(new)
+
+   targetGene <- new
+
+   roi.229k <- list(chrom="chr2", start=106055752, end=106285069)
+   roi.229k$width <- with(roi.229k, 1+end-start)
+   roi.229k$width  # 167k
+
+   tissue <- "GTEx_V8.Brain_Cerebellar_Hemisphere"
+
+   known.snps <- GRanges()
+
+   targetGene <- new
+   x <- build.model(targetGene, tissue, roi.229k,
+                    eqtl.pval.threshold=1e-3, rna.correlation.threshold=0.2,
+                    tbl.oc=tbl.boca, known.snps=known.snps)
+
+   known.snps <- x$known.snps  # keep these for running again
+
+} # test_c2orf40
 #----------------------------------------------------------------------------------------------------
 combine.tables <- function(tbl.trena, tbl.tms, tbl.breaks, targetGene, TF)
 {
@@ -563,7 +637,7 @@ summarize.models <- function()
       models <- get(load(models.all[[targetGene]]))
       model.names <- names(models)
       for(model.name in model.names){
-          i <- i + 1          
+          i <- i + 1
           tbl <- data.frame(targetGene=targetGene, tissue=model.name, score=0, stringsAsFactors=FALSE)
           model <- models[[model.name]]
           if(length(model) >= 0){
@@ -604,7 +678,7 @@ summarize.models <- function()
    tbl.summary <- as.data.frame(mtx)
    tbl.summary$sum <- as.integer(rowSums(tbl.summary))
    new.order <- order(tbl.summary$sum, decreasing=TRUE)
-   tbl.summary[new.order,]    
+   tbl.summary[new.order,]
 
 } # summarize.models
 #----------------------------------------------------------------------------------------------------
@@ -612,15 +686,17 @@ run.all <- function()
 {
    initialize.snpLocs()
 
-   roi.cherry <- list(chrom="chr2", start=106068700, end=106114200)
-   roi.cherry$width <- with(roi.cherry, 1+end-start)
-
    roi.1m <- list(chrom="chr2",  start=105224001, end=106224000)
    roi.1m$width <- with(roi.1m, 1 + end - start)
-
+   roi.1m
    roi <- roi.1m
 
-    #  
+        # as.data.frame(sort(table(subset(tbl.eqtl.rosmap,
+        #                                 chrom==tag.snp.chrom &
+        #                                 hg38 >= tag.snp.hg38 - shoulder &
+        #                                 hg38 <= tag.snp.hg38 + shoulder &
+        #                                 pvalue < 1e-3)$genesymbol), decreasing=TRUE))
+
     #          Var1 Freq
     #  1 C2orf49-DT  159    # name not recognized by all parts.  needs work
     #  2      ECRG4   88    # gtex and ampad prefer C2orf40
@@ -632,8 +708,10 @@ run.all <- function()
 
      # c("C2orf49-DT", "ECRG4",
 
-   genes <- c("C2orf40", "NCK2", "UXS1", "FHL2", "TGFBRAP1", "MRPS9")
+   genes <- c("C2orf49-DT", "ECRG4", "NCK2", "UXS1", "FHL2", "TGFBRAP1", "MRPS9")
+   length(genes)
    genes <- intersect(genes, tbl.eqtl.gtex.raw$gene)
+   length(genes)
 
    known.snps <- GRanges()
 
