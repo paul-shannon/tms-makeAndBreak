@@ -215,8 +215,11 @@ tmsMB = R6Class("tmsMB",
         #------------------------------------------------------------
         run.trena = function(tf.candidates){
             solvers=c("lasso", "Ridge", "Spearman", "Pearson", "RandomForest")
+            targetGene <- private$targetGene
+            #if(targetGene == "C2orf49-DT")
+            #    targetGene <- "RP11-332H14.2"  # gtex needs this gene symbol
             solver <- EnsembleSolver(private$mtx.rna,
-                                     targetGene=private$targetGene,
+                                     targetGene=targetGene,
                                      candidateRegulators=tf.candidates,
                                      geneCutoff=1.0,
                                      solverNames=solvers)
@@ -425,4 +428,48 @@ tmsMB = R6Class("tmsMB",
        ) # public
 
     ) # class
-#--------------------------------------------------------------------------------
+
+#----------------------------------------------------------------------------------------------------
+checkGeneNameFoundInAllSources <- function(targetGene)
+{
+      # TrenaProjectAD on top of TrenaProjectHG38, transcripts table providing chrom start end
+
+   #path <- system.file(package="TrenaProjectHG38", "extdata", "geneInfoTable_hg38.RData")
+   path <- "~/github/TrenaProjectHG38/inst/extdata/geneInfoTable.RData"
+   tbl.hg38 <- get(load(path))
+   printf("hg38 transcripts: %s", targetGene %in% tbl.hg38$geneSymbol)
+
+     # GeneHancer
+
+   require(ghdb)
+   ghdb <- GeneHancerDB()
+   tbl.gh <- retrieveEnhancersFromDatabase(ghdb, targetGene, tissues="all")
+   printf("GeneHancer: %s", nrow(tbl.gh) > 0)
+
+    # ampad (rosmap) eQTLs
+   data.dir <- "../shared"
+   full.path <- file.path(data.dir, "tbl.eqtls.rosmap.RData")
+   file.exists(full.path)
+   tbl.eqtl.rosmap.raw <- get(load(file.path(data.dir, "tbl.eqtls.rosmap.RData")))
+   printf("ampad (ROSMAP) eQTLs: %s", targetGene %in% tbl.eqtl.rosmap.raw$genesymbol)
+
+    # GTEx eQTLs
+   data.dir <- "../shared"
+   tbl.eqtl.gtex.raw <- get(load(file.path(data.dir, "gtex-eqtls-tbl.RData")))
+   printf("GTEx eQTLs: %s", targetGene %in% tbl.eqtl.gtex.raw$gene)
+
+    # gtex expression matrices
+    etx <- EndophenotypeExplorer$new(targetGene, "hg38", vcf.project="AMPAD")
+    codes.full <- etx$get.rna.matrix.codes()
+    codes <- names(codes.full)
+    checkTrue(length(codes) >= 10)
+    for(code in codes){
+       if(!grepl("GTEx_V8.Brain", code)) next;
+       mtx <- etx$get.rna.matrix(code)
+       printf("expression matrix %s: %s", code, targetGene %in% rownames(mtx))
+       }
+
+
+
+} # checkGeneNameFoundInAllSources
+#----------------------------------------------------------------------------------------------------
