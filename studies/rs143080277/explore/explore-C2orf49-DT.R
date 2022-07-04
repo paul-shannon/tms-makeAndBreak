@@ -1,4 +1,6 @@
+library(TrenaProjectHG38)
 library(TrenaProjectAD)
+library(TrenaMultiScore)
 library(EndophenotypeExplorer)
 library(RUnit)
 source("~/github/TrenaMultiScore/tools/runner/v2/tmsCore.R")
@@ -712,7 +714,7 @@ run.all <- function()
    length(genes)
    genes <- intersect(genes, tbl.eqtl.gtex.raw$gene)
    length(genes)
-
+   genes <- "ECRG4"
    known.snps <- GRanges()
 
 
@@ -720,7 +722,7 @@ run.all <- function()
        models <- list()
        t3 <- system.time({
           for(tissue in gtex.brain.tissues){
-             x <- build.model(targetGene, tissue, roi,
+             x <- build.model(targetGene, chromosome="chr2", tissue, roi,
                               eqtl.pval.threshold=1e-5,
                               rna.correlation.threshold=0.2,
                               tbl.oc=tbl.boca, known.snps=known.snps)
@@ -733,7 +735,8 @@ run.all <- function()
         }) # system.time
        printf("%d models of %s in %d seconds", length(models), targetGene, as.integer(t3[["elapsed"]]))
        timestamp <- sub(" ", "", tolower(format(Sys.time(), "%Y.%b.%e-%H:%M")))
-       filename <- sprintf("%s-models-%s-%s.RData", targetGene, "roi.528k", timestamp)
+       roi.string <- sprintf("%s:%d-%d", roi$chrom, roi$start, roi$end)
+       filename <- sprintf("%s-models-%s-%s.RData", targetGene, roi.string, timestamp)
        save(models, file=filename)
        } # for targetGene
 

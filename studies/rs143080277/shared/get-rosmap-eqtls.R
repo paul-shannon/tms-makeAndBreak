@@ -12,18 +12,23 @@ query <- sprintf("select * from eqtl2 where chrom='%s' and hg38 >= %d and hg38 <
 tbl <- dbGetQuery(geneRegDB, query)
 dim(tbl) # 45599 12
 
-       # rename C2orf40 to ECRG4 - 
-       # abandoned this step, since ECRG4 is not recognized by gtex eqtls
-#c2orf40.rows <- grep("C2orf40", tbl$genesymbol)
-#length(c2orf40.rows)  # 4103
-#tbl$genesymbol[c2orf40.rows] <- "ECRG4"
-        # fill in empty genesymbol for  ENSG00000272994: C2orf49-DT
+     # rename C2orf40 to ECRG4 - 
+
+c2orf40.rows <- grep("C2orf40", tbl$genesymbol)
+printf("--- rename %d C2orf40 rows to ECRG4", length(c2orf40.rows))
+if(length(c2orf40.rows) > 0){
+   tbl$genesymbol[c2orf40.rows] <- "ECRG4"
+   }
+
+     # fill in empty genesymbol for  ENSG00000272994: C2orf49-DT
+
 ENSG00000272994.rows <- grep("ENSG00000272994", tbl$ensg)
 length(ENSG00000272994.rows)  # 3810
 tbl$genesymbol[ENSG00000272994.rows] <- "C2orf49-DT"
 
+dim(tbl)
 tbl.eqtl.rosmap <- subset(tbl, pvalue < 1e-3)
-dim(tbl.eqtl.rosmap)  # 332 at 1e-3, 169 at 1e-5
+dim(tbl.eqtl.rosmap)  # 974 at 1e-3 
 unique(tbl.eqtl.rosmap$genesymbol)
 unique(subset(tbl.eqtl.rosmap, nchar(genesymbol) == 0)$ensg)   # just "ENSG00000269707"
 ENSG00000269707.rows <- grep("ENSG00000269707", tbl.eqtl.rosmap$ensg)
@@ -38,6 +43,10 @@ tbl.eqtl.rosmap$score <- -log10(tbl.eqtl.rosmap$pvalue) * tbl.eqtl.rosmap$beta
 fivenum(tbl.eqtl.rosmap$score)   #  -71.0453097  -6.7500935  -1.4324213   0.9271386  72.2599049
 subset(tbl.eqtl.rosmap, abs(score) > 70)
 "C2orf40" %in% tbl.eqtl.rosmap$genesymbol
-save(tbl.eqtl.rosmap, file="tbl.eqtls.rosmap.RData")
+"C2orf49-DT" %in% tbl.eqtl.rosmap$genesymbol
+"Lnc-POU3F3-7"  %in% tbl.eqtl.rosmap$genesymbol
+"" %in% tbl.eqtl.rosmap$genesymbol
+"ECRG4" %in% tbl.eqtl.rosmap$genesymbol
+save(tbl.eqtl.rosmap, file="../shared/tbl.eqtls.rosmap.RData")
 
 

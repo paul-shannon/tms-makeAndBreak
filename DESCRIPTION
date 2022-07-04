@@ -1,0 +1,6 @@
+Title: tms-makeAndBreak
+Date: 2022-07-04
+Version: 1.0.0
+Author: Paul Shannon
+Maintainer: Paul Shannon <pshannon@systemsbiology.org>
+Description: Create and explore TFBS/targetGene data assembled from many sources.
