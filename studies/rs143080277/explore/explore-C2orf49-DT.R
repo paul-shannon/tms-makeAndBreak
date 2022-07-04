@@ -425,12 +425,12 @@ test_c2orf49dt <- function()
 {
 
    message(sprintf("--- test_c2orf49dt"))
-   gene.name.1 <- "RP11-332H14.2"   # used by gtex
-   gene.name.2 <- "C2orf49-DT"      # used by genehancer and rosmap
+   old.name <- "RP11-332H14.2"   # used by gtex
+   new.name <- "C2orf49-DT"      # used by genehancer and rosmap
    ensg <-  "ENSG00000272994"       #
 
-   targetGene <- gene.name.2
-   checkGeneNameFoundInAllSources(targetGene)
+   targetGene <- new.name
+   checkGeneNameFoundInAllSources(targetGene, chromosome="chr2")
 
    roi.cherry <- list(chrom="chr2", start=105243579, end=105410755)
    roi.cherry$width <- with(roi.cherry, 1+end-start)

@@ -430,7 +430,9 @@ tmsMB = R6Class("tmsMB",
     ) # class
 
 #----------------------------------------------------------------------------------------------------
-checkGeneNameFoundInAllSources <- function(targetGene)
+# some genes not yet found in TxDb.Hsapiens.UCSC.hg38.knownGene, 3.15.0.  lncRNA C2orf49-DT
+# for instance.  so chromosome must be supplied.
+checkGeneNameFoundInAllSources <- function(targetGene, chromosome=NA)
 {
       # TrenaProjectAD on top of TrenaProjectHG38, transcripts table providing chrom start end
 
@@ -459,7 +461,8 @@ checkGeneNameFoundInAllSources <- function(targetGene)
    printf("GTEx eQTLs: %s", targetGene %in% tbl.eqtl.gtex.raw$gene)
 
     # gtex expression matrices
-    etx <- EndophenotypeExplorer$new(targetGene, "hg38", vcf.project="AMPAD")
+    etx <- EndophenotypeExplorer$new(targetGene, "hg38", vcf.project="AMPAD",
+                                     chromosome=chromosome)
     codes.full <- etx$get.rna.matrix.codes()
     codes <- names(codes.full)
     checkTrue(length(codes) >= 10)
