@@ -439,10 +439,13 @@ checkGeneNameFoundInAllSources <- function(targetGene, chromosome=NA)
 {
       # TrenaProjectAD on top of TrenaProjectHG38, transcripts table providing chrom start end
 
-   path <- system.file(package="TrenaProjectHG38", "extdata", "geneInfoTable.RData")
-   #path <- "~/github/TrenaProjectHG38/inst/extdata/geneInfoTable.RData"
-   tbl.hg38 <- get(load(path))
-   printf("hg38 transcripts: %s", targetGene %in% tbl.hg38$geneSymbol)
+   # three ways to get the gene info table, but only the third is used in
+   # TrenaMultiScore.  so test with that on.
+      #path <- system.file(package="TrenaProjectHG38", "extdata", "geneInfoTable.RData")
+      #path <- "~/github/TrenaProjectHG38/inst/extdata/geneInfoTable.RData"
+   tpad <- TrenaProjectAD()
+   tbl.adgi <- getGeneInfoTable(tpad)
+   printf("hg38 transcripts: %s", targetGene %in% tbl.adgi$geneSymbol)
 
      # GeneHancer
 
