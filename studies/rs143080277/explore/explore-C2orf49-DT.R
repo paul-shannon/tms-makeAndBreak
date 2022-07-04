@@ -295,7 +295,7 @@ pilra.neighborhood <- function()
 
 } # pilra.neighborhood
 #----------------------------------------------------------------------------------------------------
-build.model <- function(targetGene, gtex.tissue, roi,
+build.model <- function(targetGene, chromosome=NA, gtex.tissue, roi,
                         eqtl.pval.threshold, rna.correlation.threshold,
                         tbl.oc, known.snps)
 
@@ -336,7 +336,7 @@ build.model <- function(targetGene, gtex.tissue, roi,
                    length(intersect(tbl.eqtl.gtex$rsid, tbl.eqtl.rosmap$rsid))))
 
    tms <- tmsMB$new(targetGene, trenaProject, tbl.fimo, tbl.eqtl.gtex,
-                    tbl.eqtl.rosmap, tbl.oc, known.snps)
+                    tbl.eqtl.rosmap, tbl.oc, known.snps, chromosome=chromosome)
 
    trenaProject <- TrenaProjectAD()
    tms$setStudyRegion(chrom=roi$chrom, start=roi$start, end=roi$end)
@@ -446,7 +446,7 @@ test_c2orf49dt <- function()
 
    x <- build.model(targetGene, tissue, roi.224k,
                     eqtl.pval.threshold=1e-3, rna.correlation.threshold=0.2,
-                    tbl.oc=tbl.boca, known.snps=known.snps)
+                    tbl.oc=tbl.boca, known.snps=known.snps, chromosome="chr2")
 
    known.snps <- x$known.snps  # keep these for running again
 
