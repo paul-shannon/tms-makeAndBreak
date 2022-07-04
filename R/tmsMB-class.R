@@ -20,6 +20,7 @@ tmsMB = R6Class("tmsMB",
 
     #--------------------------------------------------------------------------------
     private = list(targetGene=NULL,
+                   chromosome=NA,       # only sometimes needed
                    trenaProject=NULL,
                    study.region=NULL,
                    tbl.fimo=NULL,
@@ -47,7 +48,7 @@ tmsMB = R6Class("tmsMB",
          #' @param id character, an indentifier for this object
          #' @return a new instance of the class
         initialize = function(targetGene, trenaProject, tbl.fimo, tbl.gtex.eqtls, tbl.ampad.eqtls,
-                              tbl.oc, known.snps){
+                              tbl.oc, known.snps, chromosome=NA){
             private$targetGene <- targetGene
             private$trenaProject <- trenaProject
             private$tbl.fimo <- tbl.fimo
@@ -58,8 +59,10 @@ tmsMB = R6Class("tmsMB",
             private$tbl.oc <- tbl.oc
             private$study.region <- self$getFimoGenomicRegion()
             private$etx <- EndophenotypeExplorer$new(targetGene, "hg38", vcf.project="ADNI",
+                                                     chromosome=chromosome,
                                                      initialize.snpLocs=FALSE)
             private$known.snps <- known.snps
+            private$chromosome <- chromosome
             },
         #------------------------------------------------------------
         setStudyRegion = function(chrom, start, end){
