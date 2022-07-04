@@ -741,8 +741,63 @@ run.all <- function()
 
 } # run.all
 #----------------------------------------------------------------------------------------------------
-view.gtex.eqtls <- function()
+summarize.run - function()
 {
+  models.all <- c(ECRG4="ECRG4-models-chr2:105224001-106224000-2022.jul.4-13:08.RData",
+                  FHL2="FHL2-models-chr2:105224001-106224000-2022.jul.4-12:39.RData",
+                  NCK2="NCK2-models-chr2:105224001-106224000-2022.jul.4-12:35.RData",
+                  "C2orf49-DT"="C2orf49-DT-models-chr2:105224001-106224000-2022.jul.4-12:33.RData")
+
+   tbls <- list()
+   i <- 0
+   for(targetGene in (names(models.all))){
+      models <- get(load(models.all[[targetGene]]))
+      model.names <- names(models)
+      for(model.name in model.names){
+          i <- i + 1
+          tbl <- data.frame(targetGene=targetGene, tissue=model.name, score=0, stringsAsFactors=FALSE)
+          model <- models[[model.name]]
+          if(length(model) >= 0){
+              tbl.trena <- model$trena
+              if(!is.null(tbl.trena)){
+                  tbl.trena <- head(tbl.trena, n=10)
+                  printf("targetGene %s model %s", targetGene, model.name)
+                  tbl.trena$tf.rank <- seq_len(nrow(tbl.trena))
+                  tbl.breaks <- model$tbl.breaks
+                  if(nrow(tbl.breaks) > 0){
+                      tbl.tms <- model$tms.filtered
+                      tbl.tms$targetGene <- targetGene
+                      scores <- unlist(lapply(tbl.trena$gene, function(tf)
+                          combine.tables(tbl.trena, tbl.tms, tbl.breaks, targetGene=targetGene, TF=tf)$trenaScore))
+                      tbl.trena$breakageScore <- scores
+                      breakage.total <- sum(tbl.trena$breakageScore)
+                      printf("%s %s: %d", targetGene, model.name, breakage.total)
+                      tbl$score <- breakage.total
+                     } # breaks found
+                  } # !null tbl.trena
+              } # model found
+          tbls[[i]] <- tbl
+          } # for model.name
+      } # for targetGene
+
+    tbl <- do.call(rbind, tbls)
+    tbl$tissue <- sub(".*Brain_", "", tbl$tissue)
+    tissues <- sort(unique(tbl$tissue))
+    genes <- sort(unique(tbl$targetGene))
+    data.point.count <- length(genes) * length(tissues)
+    mtx <- matrix(rep(0,data.point.count), nrow=length(genes), dimnames=list(genes, tissues))
+    for(r in seq_len(nrow(tbl))){
+       gene <- tbl$targetGene[r]
+       tissue <- tbl$tissue[r]
+       score <- tbl$score[r]
+       mtx[gene, tissue] <- score
+       }
+
+   tbl.summary <- as.data.frame(mtx)
+   tbl.summary$sum <- as.integer(rowSums(tbl.summary))
+   new.order <- order(tbl.summary$sum, decreasing=TRUE)
+   tbl.summary[new.order,]
+
 
 } # veiw.gtex.eqtls
 #----------------------------------------------------------------------------------------------------
