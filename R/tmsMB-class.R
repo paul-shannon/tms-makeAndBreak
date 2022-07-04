@@ -439,8 +439,8 @@ checkGeneNameFoundInAllSources <- function(targetGene, chromosome=NA)
 {
       # TrenaProjectAD on top of TrenaProjectHG38, transcripts table providing chrom start end
 
-   #path <- system.file(package="TrenaProjectHG38", "extdata", "geneInfoTable_hg38.RData")
-   path <- "~/github/TrenaProjectHG38/inst/extdata/geneInfoTable.RData"
+   path <- system.file(package="TrenaProjectHG38", "extdata", "geneInfoTable.RData")
+   #path <- "~/github/TrenaProjectHG38/inst/extdata/geneInfoTable.RData"
    tbl.hg38 <- get(load(path))
    printf("hg38 transcripts: %s", targetGene %in% tbl.hg38$geneSymbol)
 
