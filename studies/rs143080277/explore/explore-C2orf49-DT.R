@@ -446,9 +446,9 @@ test_c2orf49dt <- function()
 
    known.snps <- GRanges()
 
-   x <- build.model(targetGene, tissue, roi.224k,
+   x <- build.model(targetGene, chromosome="chr2", tissue, roi.224k,
                     eqtl.pval.threshold=1e-3, rna.correlation.threshold=0.2,
-                    tbl.oc=tbl.boca, known.snps=known.snps, chromosome="chr2")
+                    tbl.oc=tbl.boca, known.snps=known.snps)
 
    known.snps <- x$known.snps  # keep these for running again
 
@@ -476,7 +476,7 @@ test_c2orf40 <- function()
    known.snps <- GRanges()
 
    targetGene <- new
-   x <- build.model(targetGene, tissue, roi.229k,
+   x <- build.model(targetGene, chromosome=NA, tissue, roi=roi.229k,
                     eqtl.pval.threshold=1e-3, rna.correlation.threshold=0.2,
                     tbl.oc=tbl.boca, known.snps=known.snps)
 
@@ -714,7 +714,6 @@ run.all <- function()
    length(genes)
    genes <- intersect(genes, tbl.eqtl.gtex.raw$gene)
    length(genes)
-   genes <- "ECRG4"
    known.snps <- GRanges()
 
 
