@@ -1,7 +1,7 @@
 library(RPostgreSQL)
 geneRegDB <- dbConnect(PostgreSQL(), user= "trena", password="trena", dbname="genereg2021", host="khaleesi")
 tag.snp.loc <- 100334426
-shoulder <- 1000000
+shoulder <- 10000000
 chrom <- "chr7"
 start <- tag.snp.loc - shoulder
 end   <- tag.snp.loc + shoulder

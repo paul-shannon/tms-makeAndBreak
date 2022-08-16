@@ -1,6 +1,6 @@
 library(RUnit)
 library(TrenaProjectAD)
-source("tmsMB-class.R")
+library(tmsMB)
 #----------------------------------------------------------------------------------------------------
 runTests <- function()
 {

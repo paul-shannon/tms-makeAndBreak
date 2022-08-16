@@ -6,14 +6,12 @@ library(motifbreakR)
 library(BiocParallel)
 source("~/github/TrenaMultiScore/tools/runner/v2/tmsCore.R")
 #----------------------------------------------------------------------------------------------------
-#' @title tfam
-#' @description A template for building documented, tested R6 classes
-#' @name tfam
+#' @title tmsMB
+#' @description build and break gene regulatory modesl
+#' @name tmsMB
 
 #' @field id identifier for a class object
 #'
-#' @examples
-#'   rt <- R6Template$new(id="abc")
 #' @export
 
 tmsMB = R6Class("tmsMB",
@@ -43,10 +41,17 @@ tmsMB = R6Class("tmsMB",
 
     #--------------------------------------------------------------------------------
     public = list(
-         #' @description
-         #' Creates a new instance of this [R6][R6::R6Class] class.
-         #' @param id character, an indentifier for this object
-         #' @return a new instance of the class
+        #' @description
+        #' Creates a new instance of this class.
+        #' @param targetGene  the gene whose regulation we wish to explore
+        #' @param trenaProject a TrenaProject subclass, for access to, e.g., expression data
+        #' @param tbl.fimo results from a broad low-filter fimo run
+        #' @param tbl.gtex.eqtls eQTLs for a specific tissue
+        #' @param tbl.ampad.eqtls eQTLs for ROSMAP and Mayo
+        #' @param tbl.oc open chromatin
+        #' @param known.snps  genomic variants already looked up
+        #' @param chromosome chromosome id, usually not needed
+        #' @return a new instance of the class
         initialize = function(targetGene, trenaProject, tbl.fimo, tbl.gtex.eqtls, tbl.ampad.eqtls,
                               tbl.oc, known.snps, chromosome=NA){
             private$targetGene <- targetGene
@@ -65,15 +70,24 @@ tmsMB = R6Class("tmsMB",
             private$chromosome <- chromosome
             },
         #------------------------------------------------------------
+        #' @description establish the genomic region of interest
+        #' @param chrom  chromosome
+        #' @param start region start
+        #' @param end region end
+        #' @return noting
         setStudyRegion = function(chrom, start, end){
             width.kb <- round(((1 + end - start)/1000), digits=2)
             private$study.region <- list(chrom=chrom, start=start, end=end, width.kb=width.kb)
             },
         #------------------------------------------------------------
+        #' @description obtain the genomic region of interest
+        #' @return list
         getStudyRegion = function(){
             private$study.region
             },
         #------------------------------------------------------------
+        #' @description obtain the full extent of the fimo table
+        #' @return list
         getFimoGenomicRegion = function(){
             chrom <- private$tbl.fimo$chrom[1]
             start <- min(private$tbl.fimo$start)
@@ -82,14 +96,20 @@ tmsMB = R6Class("tmsMB",
             return(list(chrom=chrom, start=start, end=end, width.kb=width.kb))
             },
         #------------------------------------------------------------
+        #' @description obtain the eqtls for current GTEx tissue
+        #' @return data.frame
         get.gtex.eqtls = function(){
             invisible(tbl.gtex.eqtls)
             },
         #------------------------------------------------------------
+        #' @description obtain the eqtls ROSMAP and Mayo
+        #' @return data.frame
         get.ampad.eqtls = function(){
             invisible(tbl.ampad.eqtls)
             },
         #------------------------------------------------------------
+        #' @description obtain the genomic extent of the GTEx eqtls
+        #' @return list
         getGTEx.eqtl.genomicRegion = function(){
             start <- min(tbl.gtex.eqtls$hg38)
             end   <- max(tbl.gtex.eqtls$hg38)
@@ -97,6 +117,8 @@ tmsMB = R6Class("tmsMB",
             return(list(start=start, end=end, width.kb=width.kb))
             },
         #------------------------------------------------------------
+        #' @description obtain the genoic extent of the ampad eqtls
+        #' @return
         getAMPAD.eqtl.genomicRegion = function(){
             start <- min(private$tbl.fimo$start)
             end   <- max(private$tbl.fimo$end)
@@ -104,19 +126,28 @@ tmsMB = R6Class("tmsMB",
             return(list(start=start, end=end, width.kb=width.kb))
             },
         #------------------------------------------------------------
+        #' @description obtain the full list of GTEx tissue names
+        #' @return character vector
         getGTEx.eqtl.tissues = function(){
             private$gtex.eqtl.tissues
             },
         #------------------------------------------------------------
+        #' @description obtain the current GTEx tissule name
+        #' @return character
         get.current.GTEx.eqtl.tissue = function(){
             private$current.tissue
             },
         #------------------------------------------------------------
+        #' @description specify the current GTEx tissue
+        #' @param new.tissue a recognized GTEx tissue name
+        #' @return nothing
         set.current.GTEx.eqtl.tissue = function(new.tissue){
             stopifnot(new.tissue %in% private$gtex.eqtl.tissues)
             private$current.tissue <- new.tissue
             },
         #------------------------------------------------------------
+        #' @description  run the full TrenaMultiScore process
+        #' @return nothing
         run.tms = function(){
             current.region <- self$getStudyRegion()
             tbl.fimo.sub <- subset(tbl.fimo, start >= current.region$start & end <= current.region$end)
@@ -133,6 +164,8 @@ tmsMB = R6Class("tmsMB",
             private$tbl.tms <- private$tms$getTfTable()
             },
         #------------------------------------------------------------
+        #' @description add eqtls values to the tms feature table
+        #' @return
         add.eqtls.toTmsTable = function(){
             tbl.tms <- private$tbl.tms
 
@@ -198,24 +231,35 @@ tmsMB = R6Class("tmsMB",
             private$tbl.tms$gtex.eqtl.score <- -log10(pval) * beta
             },
         #------------------------------------------------------------
+        #' @description obtain the current feature table
+        #' @return data.frame
         get.tmsTable = function(){
             private$tbl.tms
             },
         #------------------------------------------------------------
+        #' @description obtain our current list of location-specified variants
+        #' @return list
         get.knownSnps = function(){
             private$known.snps
             },
 
         #------------------------------------------------------------
+        #' @description obtain the results from motifbreakR
+        #' @return data.frame
         get.motifBreaks = function(){
             private$motifBreaks
             },
 
         #------------------------------------------------------------
+        #' @description obtain the data.frame summary out of motifbreakR
+        #' @return data.frame
         get.breaksTable = function(){
             private$tbl.breaks
             },
         #------------------------------------------------------------
+        #' @description build trena regulatory model
+        #' @param tf.candidates character vector,  TFs selected from the feature table
+        #' @return data.frame
         run.trena = function(tf.candidates){
             solvers=c("lasso", "Ridge", "Spearman", "Pearson", "RandomForest")
             targetGene <- private$targetGene
@@ -238,18 +282,30 @@ tmsMB = R6Class("tmsMB",
 
             },
         #------------------------------------------------------------
+        #' @description obtain the trena results
+        #' @return data.frame
         get.trenaTable = function(){
            private$tbl.trena
            },
         #------------------------------------------------------------
+        #' @description user (biologist) chosen subset of the feature table
+        #' @param tbl.filtered user (biologist) filtered feature table
+        #' @return nothing
         set.tmsFilteredTable = function(tbl.filtered){
            private$tbl.tmsFiltered <- tbl.filtered
            },
         #------------------------------------------------------------
+        #' @description obtain the chosen filtered subset of the feature table
+        #' @return nothing
         get.tmsFilteredTable = function(){
            private$tbl.tmsFiltered
            },
         #------------------------------------------------------------
+        #' @description run motifbreakR
+        #' @param tbl.trena  trena results
+        #' @param tbl.tms feature table
+        #' @param tbl.eqtls  eQTLs of interest
+        #' @return nothing
         breakMotifs = function(tbl.trena, tbl.tms, tbl.eqtls){
             #browser()
             tbl.tfbs <- subset(tbl.tms, tf %in% tbl.trena$gene)
@@ -355,6 +411,18 @@ tmsMB = R6Class("tmsMB",
             private$tbl.breaks <- tbl.breaks.tfbs
             },  # breakMotifs
         #------------------------------------------------------------
+        #' @description render breaks, eQTLs and trena model in an existing igvR instance
+        #' @param igv  igvR instance
+        #' @param current.tissue GTEx tissue of interest
+        #' @param tbl.trena results of trena run
+        #' @param tbl.tms the full feature table
+        #' @param tbl.tms.filtered the user-filtered feature table
+        #' @param tbl.gtex.eqtls GTEx eqtls
+        #' @param tbl.ampad.eqtls ROSMAP and Mayo eqtls
+        #' @param tbl.oc open chromatin
+        #' @param tbl.breaks motifbreakR results
+        #' @return nothing
+
         viz = function(igv, current.tissue, tbl.trena, tbl.tms, tbl.tms.filtered,
                        tbl.gtex.eqtls, tbl.ampad.eqtls, tbl.oc, tbl.breaks) {
             shoulder <- 1000

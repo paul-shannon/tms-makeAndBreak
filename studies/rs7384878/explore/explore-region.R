@@ -68,14 +68,19 @@ if(!exists("tbl.boca")){
    filename <- "boca-hg38-consensus-ATAC.RData"
    tbl.boca <- get(load(file.path(data.dir, filename)))
    }
-    
+
 if(!exists("tbl.haploreg")){
     data.dir <- "../shared"
+    haploreg.file <- "haploreg-rs7384878.tsv"
     tbl.haploreg <-
-       read.table(file.path(data.dir, "haploreg.tsv"), sep="\t", as.is=TRUE, header=TRUE, nrow=-1)
+       read.table(file.path(data.dir, haploreg.file), sep="\t", as.is=TRUE, header=TRUE, nrow=-1)
     tbl.haploreg$score <- 0.9999999999 - tbl.haploreg$Rsquared
     if(FALSE){
-       track <- GWASTrack("LD", tbl.haploreg, chrom.col=1, pos.col=2, pval.col=8, trackHeight=100)
+       tbl.track <- tbl.haploreg[, c("chrom", "hg38", "hg38", "Rsquared")]
+       colnames(tbl.track) <- c("chrom", "start", "end", "score")
+       tbl.track$start <- tbl.track$start - 1
+       tbl.track$chrom <- as.character(tbl.track$chrom)
+       track <- DataFrameQuantitativeTrack("LD", tbl.track, color="red", trackHeight=25, autoscale=TRUE)
        displayTrack(igv, track)
        }
     }
@@ -116,7 +121,8 @@ if(!exists("tbl.gwascat.ad")){
        track <- GWASTrack("gwascat.ad", tbl.gwascat.ad, chrom.col=1, pos.col=2, pval.col=33,
                           trackHeight=100)
        displayTrack(igv, track)
-       }
+
+   }
    }
 
 # if(!exists("tbl.rsids")){  # with mayo & rosmap scores for association of each variant to extreme braak score
@@ -128,18 +134,34 @@ if(!exists("tbl.gwascat.ad")){
 #    }
 
 if(!exists("tbl.rosmap.nearby")){
+   goi <- "PILRB"
    data.dir <- "../shared"
    full.path <- file.path(data.dir, "tbl.eqtls.rosmap.RData")
    file.exists(full.path)
    tbl.rosmap.nearby.raw <- get(load(file.path(data.dir, "tbl.eqtls.rosmap.RData")))
    dim(tbl.rosmap.nearby.raw)
-   tbl.rosmap.nearby <- subset(tbl.rosmap.nearby.raw, pvalue < 0.001)
+   tbl.rosmap.nearby.raw$score <- -log10(tbl.rosmap.nearby.raw$pvalue)
+   tbl.rosmap.nearby <- subset(tbl.rosmap.nearby.raw, pvalue < 0.001 & genesymbol==goi)
    dim(tbl.rosmap.nearby)   # 6262 12
    if(FALSE){
-      track <- GWASTrack("rosmap eQTLs", tbl.rosmap.nearby, trackHeight=100,
-                          chrom.col=1, pos.col=3, pval.col=5)
+      #track <- GWASTrack("rosmap eQTLs", tbl.rosmap.nearby.raw, trackHeight=100,
+       #                    chrom.col=1, pos.col=3, pval.col=5)
+      coi <- c("chrom", "hg38", "hg38", "score", "genesymbol")
+      tbl.track <- tbl.rosmap.nearby.raw[, coi]
+      colnames(tbl.track) <- c("chrom", "start", "end", "score")
+      tbl.track$start <- tbl.track$start - 1
+      dim(tbl.track)
+      track <- DataFrameQuantitativeTrack("rosmap eqtl", tbl.track, autoscale=TRUE, min=0, max=4)
       displayTrack(igv, track)
-      }
+         # now the top affected genes
+      target.genes <- names(sort(table(subset(tbl.track, score > 50)$genesymbol), decreasing=TRUE))
+      for(gene in target.genes){
+         tbl.track.gene <- subset(tbl.track, genesymbol==gene)
+         title <- sprintf("%s eqtl", gene)
+         track <- DataFrameQuantitativeTrack(title, tbl.track.gene, autoscale=TRUE, min=0, max=4, color="random")
+         displayTrack(igv, track)
+         } # for gene
+      } # FALSE
    } # tbl.rosmap.nearby
 
 if(!exists("tbl.gtex.eqtls")){
@@ -324,10 +346,10 @@ build.model <- function(targetGene, gtex.tissue, roi,
    filter <- correlated.expression &
        (ampad.and.gtex.eqtls | (openChromatin & chip & strong.ampad.eqtl & genehancer))
    table(filter)
-                       
+
        #subset(tbl.tms, (ampad.eqtl.pval < 1 & gtex.eqtl.pval < eqtl.pval.threshold) &
        #                abs(cor.all) >= rna.correlation.threshold)
-   
+
    tbl.tms.filtered <- tbl.tms[which(filter),]
    print(dim(tbl.tms.filtered))
 
@@ -351,7 +373,7 @@ build.model <- function(targetGene, gtex.tissue, roi,
              new.order <- order(tbl.breaks$pctDelta, decreasing=FALSE)
              tbl.breaks <- tbl.breaks[new.order,]
           } # nrow tbl.breaks
-          } # is.null 
+          } # is.null
       } # tf.candidates
 
    new.known.snps <- tms$get.knownSnps()
@@ -528,7 +550,7 @@ summarize.models <- function()
       models <- get(load(models.all[[targetGene]]))
       model.names <- names(models)
       for(model.name in model.names){
-          i <- i + 1          
+          i <- i + 1
           tbl <- data.frame(targetGene=targetGene, tissue=model.name, score=0, stringsAsFactors=FALSE)
           model <- models[[model.name]]
           if(length(model) >= 0){
@@ -569,7 +591,7 @@ summarize.models <- function()
    tbl.summary <- as.data.frame(mtx)
    tbl.summary$sum <- as.integer(rowSums(tbl.summary))
    new.order <- order(tbl.summary$sum, decreasing=TRUE)
-   tbl.summary[new.order,]    
+   tbl.summary[new.order,]
 
 } # summarize.models
 #----------------------------------------------------------------------------------------------------
@@ -593,7 +615,7 @@ test_build.model <- function()
    x <- build.model(targetGene, "GTEx_V8.Brain_Cortex", roi.10k, eqtl.pval.threshold=1e-3,
                     rna.correlation.threshold=0.2, tbl.oc=data.frame(), known.snps=known.snps)
 
-   
+
    targetGene <- "ZSCAN21"
    #x <- build.model(targetGene, "GTEx_V8.Brain_Cortex", roi.10k, eqtl.pval.threshold=1e-5, rna.correlation.threshold=0.2)
    save(x, file="tmp-test.RData")
@@ -675,7 +697,7 @@ test_zscan21_2.tissues <- function()
 # should model w/breakage nearly null
 test_bud31 <- function()
 {
-   roi.82k  <- list(chrom="chr7", start=100333519, end=100416094, width=82575) 
+   roi.82k  <- list(chrom="chr7", start=100333519, end=100416094, width=82575)
    roi.25k  <- list(chrom="chr7", start=99394115, end=99419550, width=25436, string="chr7:99,394,115-99,419,550")
    roi.120k <- list(chrom="chr7", start=100011184, end=100131671, width=120488, string="chr7:100,011,184-100,131,671")
    roi.528k <- list(chrom="chr7", start=100076962, end=100605694, width=528733, string="chr7:100,076,962-100,605,694")
@@ -707,12 +729,12 @@ test_bud31 <- function()
                     eqtl.pval.threshold=5e-3, rna.correlation.threshold=0.0,
                     tbl.oc=data.frame(), known.snps=known.snps)
    checkEquals(x$trena, data.frame())
-   
+
 } # test_bud31
 #----------------------------------------------------------------------------------------------------
 test_stag3l5p <- function()
 {
-   roi.82k  <- list(chrom="chr7", start=100333519, end=100416094, width=82575) 
+   roi.82k  <- list(chrom="chr7", start=100333519, end=100416094, width=82575)
 
    gene <- "STAG3L5P"
    tissue <- "GTEx_V8.Brain_Cortex"
@@ -734,7 +756,7 @@ test_stag3l5p <- function()
 #----------------------------------------------------------------------------------------------------
 test_stag3l5p <- function()
 {
-   roi.82k  <- list(chrom="chr7", start=100333519, end=100416094, width=82575) 
+   roi.82k  <- list(chrom="chr7", start=100333519, end=100416094, width=82575)
 
    gene <- "STAG3L5P"
    tissue <- "GTEx_V8.Brain_Cortex"
@@ -759,7 +781,7 @@ test_stag3l5p <- function()
 # should model w/breakage nearly null
 test_pilrb <- function()
 {
-   roi.82k  <- list(chrom="chr7", start=100333519, end=100416094, width=82575) 
+   roi.82k  <- list(chrom="chr7", start=100333519, end=100416094, width=82575)
    roi.25k  <- list(chrom="chr7", start=99394115, end=99419550, width=25436, string="chr7:99,394,115-99,419,550")
    roi.120k <- list(chrom="chr7", start=100011184, end=100131671, width=120488, string="chr7:100,011,184-100,131,671")
    roi.528k <- list(chrom="chr7", start=100076962, end=100605694, width=528733, string="chr7:100,076,962-100,605,694")
@@ -776,7 +798,7 @@ test_pilrb <- function()
    x <- build.model(gene, tissue, roi.82k,
                     eqtl.pval.threshold=1e-5, rna.correlation.threshold=0.2,
                     tbl.oc=tbl.boca, known.snps=known.snps)
-   
+
 } # test_pil4b
 #----------------------------------------------------------------------------------------------------
 # spdye3 is 13 kb from the rs7384878, has quite a few rosmap eqtls nearby
@@ -785,7 +807,7 @@ test_spdye3 <- function()
 {
    roi.115k <- list(chrom="chr7", start=99394115, end=99419550, width=25436,
                     string="chr7:99,394,115-99,419,550")
-   
+
    gene <- "SPDYE3"
    tissue <- "GTEx_V8.Brain_Cerebellar_Hemisphere"
 
@@ -832,7 +854,7 @@ test_zscan21 <- function()
                     tbl.oc=tbl.boca, known.snps=known.snps)
    checkEquals(x, list())
 
- 
+
 } # test_zscan21
 #----------------------------------------------------------------------------------------------------
 run.all <- function()
@@ -841,7 +863,7 @@ run.all <- function()
    roi.10k <- list(chrom="chr7", start=100048000, end=100058000, width=10001, string="chr7:100,048,000-100,058,000")
    roi.120k <- list(chrom="chr7", start=100011184, end=100131671, width=120488, string="chr7:100,011,184-100,131,671")
    roi.528k <- list(chrom="chr7", start=100076962, end=100605694, width=528733, string="chr7:100,076,962-100,605,694")
-   roi.82k  <- list(chrom="chr7", start=100333519, end=100416094, width=82575) 
+   roi.82k  <- list(chrom="chr7", start=100333519, end=100416094, width=82575)
 
    roi <- roi.82k
      # 1     PILRB  476
@@ -878,6 +900,55 @@ run.all <- function()
        } # for targetGene
 
 } # run.all
+#----------------------------------------------------------------------------------------------------
+eqtl.to.phenotype <- function()
+{
+   source("~/github/gwasExplorer/explore/newScore/doesLinkagePredictBraakscSeparatedEnrichment/eqtl-to-phenotype.R")
+
+   targetGene <- "PILRB"
+   etx <- EndophenotypeExplorer$new(targetGene, "hg19", vcf.project="AMPAD")
+
+   RSID <- tag.snp
+   x <- rosmap.ad.ctl.separation(RSID)
+   checkEquals((names(x)), c("pval.t", "pval.fisher", "tbl.geno", "tbl.pt", "mtx.geno", "mtx.geno.study", "pt.ad", "pt.ctl"))
+
+   tbl.rosmap.nearby.raw <- get(load(file.path(data.dir, "tbl.eqtls.rosmap.RData")))
+   roi <- getGenomicRegion(igv)
+   goi <- "PILRB"
+   pval.threshold <- 1e-8
+   tbl.eqtl <- subset(tbl.rosmap.nearby.raw, hg38 >= roi$start & hg38 <= roi$end &
+                                             pvalue < pval.threshold)
+                                             # & genesymbol == goi)
+   dim(tbl.eqtl)
+   tbl.track <- tbl.eqtl[, c("chrom", "hg38", "hg38", "pvalue")]
+   colnames(tbl.track) <- c("chrom", "start", "end", "score")
+   tbl.track$start <- tbl.track$start - 1
+   tbl.track$score <- -log10(tbl.track$score)
+   track <- DataFrameQuantitativeTrack("rosmap eQTL", tbl.track, autoscale=TRUE, color="blue")
+   displayTrack(igv, track)
+
+   rsids <- unique(tbl.eqtl$rsid)
+   length(rsids)
+   xx <- lapply(rsids, rosmap.ad.ctl.separation)
+   length(xx)
+   names(xx) <- rsids
+
+   pval.fisher <- unlist(lapply(xx, function(el) el$pval.fisher))
+   pval.t <- unlist(lapply(xx, function(el) el$pval.t))
+   tbl.rsids.braak <- data.frame(rsid=rsids, pval.fisher=pval.fisher, pval.t=pval.t)
+   save(xx, tbl.rsids.braak, file="braakScoreEvaluated-643-rsids.RData")
+   tbl.track <- unique(merge(tbl.eqtl[, c("chrom", "hg38", "hg38", "rsid")], tbl.rsids.braak, by="rsid"))
+   tbl.track$score <- -log10(tbl.track$pval.fisher)
+   colnames(tbl.track) <- c("rsid", "chrom", "start", "end", "pval.fisher", "pval.t", "score")
+   tbl.track <- tbl.track[, c("chrom", "start", "end", "score", "pval.fisher", "pval.t", "rsid")]
+   tbl.track$start <- tbl.track$start - 1
+   track <- DataFrameQuantitativeTrack("braak sep", tbl.track, color="magenta", autoscale=FALSE,
+                                       min=0, max = 1.05 * max(tbl.track$score))
+   displayTrack(igv, track)
+
+
+
+} # eqtl.to.phenotype
 #----------------------------------------------------------------------------------------------------
 view.gtex.eqtls <- function()
 {

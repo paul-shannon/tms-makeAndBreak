@@ -10,13 +10,15 @@ library(SNPlocs.Hsapiens.dbSNP155.GRCh38)
 library(BSgenome.Hsapiens.UCSC.hg38)
 library(BiocParallel)
 #------------------------------------------------------------------------------------------
+# rs143080277  T>C
+# 2:105749599 (GRCh38)
+# 2:106366056 (GRCh37)
+# Canonical SPDI:NC_000002.12:105749598:T:C
 tag.snp <- "rs143080277"
 tag.snp.chrom <- "chr2"
 rsid.oi <- tag.snp
 tag.snp.hg38 <- 105749599
 shoulder <- 500000
-#------------------------------------------------------------------------------------------
-
 #------------------------------------------------------------------------------------------
 gtex.brain.tissues <- c("GTEx_V8.Brain_Cerebellar_Hemisphere",
                         "GTEx_V8.Brain_Cerebellum",
@@ -35,7 +37,7 @@ if(!exists("igv") & FALSE){
                             stringsAsFactors=FALSE)
     track <- DataFrameAnnotationTrack(tag.snp, tbl.track, color="red", trackHeight=25)
     displayTrack(igv, track)
-    showGenomicRegion(igv, "C2orf49")
+    showGenomicRegion(igv, "chr2:104,926,208-106,499,136")
     zoomOut(igv)
     }
 
@@ -122,7 +124,7 @@ if(!exists("tbl.eqtl.rosmap")){
    dim(tbl.eqtl.rosmap)   # 6262 12
    tbl.tmp <- subset(tbl.eqtl.rosmap, genesymbol=="ECRG4")
    if(FALSE){
-      track <- GWASTrack("rosmap eQTLs", tbl.tmp, trackHeight=100,
+      track <- GWASTrack("rosmap eQTLs", tbl.eqtl.rosmap, trackHeight=100,
                           chrom.col=1, pos.col=3, pval.col=5)
       displayTrack(igv, track)
       }
@@ -135,8 +137,7 @@ if(!exists("tbl.eqtl.gtex")){
    if(!grepl("chr", tbl.eqtl.gtex.raw$chrom[1]))
       tbl.eqtl.gtex.raw$chrom <- paste0("chr", tbl.eqtl.gtex.raw$chrom)
    dim(tbl.eqtl.gtex.raw)
-   targetGene <- "ZSCAN21"
-   tbl.track <- subset(tbl.eqtl.gtex.raw, pvalue < 0.001 & gene==targetGene)
+   tbl.track <- subset(tbl.eqtl.gtex.raw, pvalue < 0.001) # & gene==targetGene)
    dim(tbl.track)
    if(FALSE){
       track <- GWASTrack("GTEx eQTLs", tbl.track, trackHeight=100,
@@ -262,7 +263,7 @@ identify.affected.genes <- function()
    tbl.sub <-
      subset(tbl.eqtl.rosmap,
             hg38 >= roi$start & hg38 <= roi$end &
-            pvalue < 1e-5)
+            pvalue < 1e-3)
    goi <- unique(tbl.sub$genesymbol)
    length(goi)  # 13
 
@@ -800,6 +801,143 @@ summarize.run - function()
 
 
 } # veiw.gtex.eqtls
+#----------------------------------------------------------------------------------------------------
+# publication ready genome views
+viz <- function()
+{
+      # init and tag.snp
+   igv <- start.igv("NCK2")
+
+          #------------------------------
+          # start off with tag snp
+          #------------------------------
+   loc.string <- sprintf("%s:%d-%d", tag.snp.chrom, tag.snp.hg38-shoulder, tag.snp.hg38+shoulder)
+   showGenomicRegion(igv, loc.string)
+   tbl.track <- data.frame(chrom=tag.snp.chrom,
+                           start=tag.snp.hg38-1,
+                           end=tag.snp.hg38,
+                           name=tag.snp,
+                           stringsAsFactors=FALSE)
+   track <- DataFrameAnnotationTrack(tag.snp, tbl.track, color="red", trackHeight=27)
+   displayTrack(igv, track)
+
+   # x <- list(arguments="track, popoverData", body="{console.log('track click 99')}")
+   #setTrackClickFunction(igv, x)
+
+     #----------------------------------------
+     # now nearby variants with LD >= 0.5
+     #----------------------------------------
+
+   data.dir <- "../shared"
+   tbl.haploreg <-
+     read.table(file.path(data.dir, "haploreg.tsv"), sep="\t", as.is=TRUE, header=TRUE, nrow=-1)
+    track <- DataFrameQuantitativeTrack("LD >= 0.5", tbl.haploreg[, c("chrom", "hg38", "hg38", "Rsquared")],
+                                        autoscale=FALSE, min=0, max=1)
+   displayTrack(igv, track)
+
+
+      #-----------------------------------------------------------
+      # one possibly relevant TAD, in a motor neuron, from ENCODE
+      #-----------------------------------------------------------
+
+   data.dir <- "~/github/TrenaProjectHG38/prep/encode/tads"
+   bedpe.files <- list.files(path=data.dir, pattern="bedpe")
+   for(bedpe.file in bedpe.files[1]){ # ENCFF11
+       tbl.bedpe <- read.table(file.path(data.dir, bedpe.file), sep="\t", as.is=TRUE, nrow=-1)[, 1:6]
+       colnames(tbl.bedpe) <- c("chrom1", "start1", "end1", "chrom2", "start2", "end2")
+       if(!grepl("chr", tbl.bedpe$chrom1[1])){
+          tbl.bedpe$chrom1 <- paste0("chr", tbl.bedpe$chrom1)
+          tbl.bedpe$chrom2 <- paste0("chr", tbl.bedpe$chrom2)
+          }
+       track.name <- sub(".bedpe", "", bedpe.file, fixed=TRUE)
+       track <- BedpeInteractionsTrack(track.name, tbl.bedpe)
+       displayTrack(igv, track)
+       } # for bedpe.file
+
+   showGenomicRegion(igv, "chr2:105,550,769-106,582,135")
+
+      #------------------------------
+      # eqtls for genes in the region
+      #------------------------------
+   tbl.eqtl.freq <- as.data.frame(sort(table(tbl.eqtl.rosmap$genesymbol), decreasing=TRUE))
+   genes <- as.character(tbl.eqtl.freq$Var1)
+   genes.with.eqtls.in.tad <- c("ECRG4", "NCK2", "UXS1")
+   for(gene in genes.with.eqtls.in.tad){
+      tbl.sub <- subset(tbl.eqtl.rosmap, genesymbol==gene)
+      tbl.track <- tbl.sub[, c("chrom", "hg38", "hg38", "score")]
+      colnames(tbl.track) <- c("chrom", "start", "end", "score")
+      tbl.track$start <- tbl.track$start - 1
+      track <- DataFrameQuantitativeTrack(gene, tbl.track, autoscale=FALSE, min=-10, max=10, color="random")
+      displayTrack(igv, track)
+      } # for gene
+
+
+      #--------------------------------------------------
+      # get mtx.geno for region
+      #--------------------------------------------------
+
+    require(VariantAnnotation)
+    file <- "chr2-sub.vcf"
+    file.exists(file)
+    vcf <- readVcf(file, "hg19")
+    mtx.geno <- geno(vcf)$GT
+    dim(mtx.geno) # 78 1894
+    locs.raw <- rownames(mtx.geno)
+    locs <- sub("_.*$", "", locs.raw)
+    length(locs)
+    length(unique(locs))
+    tokens <- strsplit(locs, ":")
+    chroms <- unlist(lapply(tokens, "[", 1))
+    pos <- as.numeric(unlist(lapply(tokens, "[", 2)))
+    length(chroms)
+    length(pos)
+    gr.locs <- GRanges(chroms[1], IRanges(start=pos))
+
+    chain.file <- "hg19ToHg38.over.chain"
+    if(!file.exists(chain.file)){
+       cmd <- sprintf("curl -O http://hgdownload.soe.ucsc.edu/goldenPath/hg19/liftOver/%s.gz", chain.file)
+       system(cmd)
+       cmd <- sprintf("gunzip %s.gz", chain.file)
+       system(cmd)
+       }
+    chain <- import.chain(chain.file)
+    x <- liftOver(gr.locs, chain)
+    as.data.frame(unlist(x))
+
+
+
+    roi <- getGenomicRegion(igv)
+    # roi$chrom <- sub("chr", "", roi$chrom)
+    roi.gr <- with(roi, GRanges(seqnames=chrom, IRanges(start, end)))
+    system("curl -O http://hgdownload.soe.ucsc.edu/goldenPath/hg38/liftOver/hg38ToHg19.over.chain.gz")
+    system("gunzip hg38ToHg19.over.chain.gz")
+    chain <- import.chain("hg38ToHg19.over.chain")
+    x <- liftOver(roi.gr, chain)
+    roi.gr.hg19 <- unlist(x)
+    #url <- "https://igv-data.systemsbiology.net/ampad/NIA-1898/chr2.vcf.gz"
+    #tbi <- sprintf("%s.tbi", url)
+    #scanVcfHeader(url)
+    #tbx <- class(TabixFile(url))
+    #class(tbx)
+
+    #countTabix(tbx)
+    #open(tbi)
+    #seqnamesTabix(tbi)
+    # seqinfo(gr.har.hg38) <- SeqinfoForUCSCGenome("hg38")[seqlevels(gr.har.hg38)]
+
+    #fl <- system.file("extdata", "example.gtf.gz", package="Rsamtools", mustWork=TRUE)
+    #tbx <- TabixFile(fl)
+    #countTabix(tbx)
+
+    #roi <- GRanges(seqnames="19", IRanges(start=1000, end=1000000))
+    #url <- "https://igv-data.systemsbiology.net/ampad/NIA-1898/chr19.vcf.gz"
+    #system.time(x <- readVcf(url, "hg19", roi))
+    #mtx.geno <- geno(x)$GT
+    #dim(mtx.geno)  # 2567 1894
+    #mtx.geno[1:8, 1:8]
+
+
+} # viz
 #----------------------------------------------------------------------------------------------------
 if(!interactive())
    run.all()

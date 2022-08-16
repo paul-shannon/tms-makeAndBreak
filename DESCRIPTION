@@ -1,6 +1,12 @@
+Package: tmsMB
+Type: Package
 Title: tms-makeAndBreak
-Date: 2022-07-04
-Version: 1.0.1
+Date: 2022-08-16
+Version: 1.0.2
 Author: Paul Shannon
 Maintainer: Paul Shannon <pshannon@systemsbiology.org>
-Description: Create and explore TFBS/targetGene data assembled from many sources.
+Description: Create and break gene regulatory modesl with data assembled from many sources.
+Imports:
+Depends: R (>= 4.1.0), R6
+Encoding: UTF-8
+RoxygenNote: 7.2.1
