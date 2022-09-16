@@ -63,6 +63,11 @@ buildFT = R6Class("buildFT",
            },
 
        #------------------------------------------------------------
+       getRnaMatrixCode = function(){
+           names(private$etx$get.rna.matrix.codes())
+           },
+
+       #------------------------------------------------------------
        setFilteredTable = function(tbl.filtered){
            private$tbl.filtered <- tbl.filtered
            },
@@ -230,7 +235,25 @@ buildFT = R6Class("buildFT",
           #browser()
           private$tbl.filtered.collapsed <- tbl.fftC
           xyz <- 99
-          }
+          },
+       findMotifBreaks = function(){
+           snps.gr <- snps.from.rsid(rsid=rsids.sig,
+                                     dbSNP=SNPlocs.Hsapiens.dbSNP151.GRCh38,
+                                     search.genome=BSgenome.Hsapiens.UCSC.hg38)
+
+           motifs <- query(MotifDb, c("sapiens"), c("jaspar2018", "HOCOMOCOv11-core-A"))
+
+           results <- motifbreakR(snpList = snps.gr,
+                                  filterp = TRUE,
+                                  pwmList = motifs,
+                                  show.neutral=FALSE,
+                                  method = c("ic", "log", "notrans")[1],
+                                  bkg = c(A=0.25, C=0.25, G=0.25, T=0.25),
+                                  BPPARAM = BiocParallel::bpparam(),
+                                  verbose=TRUE)
+           tbl.breaks <- as.data.frame(results, row.names=NULL)
+           tbl.breaks <- subset(tbl.breaks, effect=="strong")
+           } # findMotifBreaks
 
        ) # public
 
@@ -273,8 +296,10 @@ choose.test.region <- function()
 #----------------------------------------------------------------------------------------------------
 targetGene <- "NDUFS2"
 bft <- buildFT$new(targetGene=targetGene,
-                   gtex.tissue="GTEx_V8.Brain_Frontal_Cortex_BA9",
+                   gtex.tissue="GTEx_V8.Brain_Hippocampus",
+                   #gtex.tissue="GTEx_V8.Brain_Frontal_Cortex_BA9",
                    fimo.file="../shared/tbl.fimo.NDUFS2.RData")
+
 
 go <- function(){
     bft$add.rosmap.eqtls()
@@ -285,15 +310,16 @@ go <- function(){
     bft$add.boca.atac()
     bft$add.gtex.expression.correlation()
     tbl <- bft$getTable()
-    tbl.filtered <- subset(tbl, abs(GTEx_Frontal_Cortex_BA9.eqtl.score) > 0.2 &
-                                abs(rna.cor.Frontal_Cortex_BA9) > 0.2 &
-                                (mayoAtac | bocaAtac))
+    tbl.filtered <- subset(tbl, abs(rna.cor.Hippocampus) > 0.3 &
+                                abs(GTEx_Hippocampus.eqtl.score > 0.4))
+                                # (mayoAtac | bocaAtac))
     table(tbl.filtered$tf)
     bft$setFilteredTable(tbl.filtered)
     bft$reduce.tbl.filtered()
     tbl.fftC <- bft$getCollapsedFilteredTable()
-
+    table(tbl.fftC$tf)
     tfs <- sort(unique(tbl.fftC$tf))
 
     tbl.trena <- bft$run.trena(tfs)
+    dim(tbl.trena)
     }
