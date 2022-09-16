@@ -23,7 +23,10 @@ buildFT = R6Class("buildFT",
                    chrom=NULL,
                    start=NULL,
                    end=NULL,
-                   etx=NULL
+                   etx=NULL,
+                   tbl.filtered=NULL,
+                   tbl.filtered.collapsed=NULL,
+                   tbl.trena=NULL
                    ),
 
     #--------------------------------------------------------------------------------
@@ -57,6 +60,21 @@ buildFT = R6Class("buildFT",
        #------------------------------------------------------------
        getTable = function(){
            return(private$ft$getTable())
+           },
+
+       #------------------------------------------------------------
+       setFilteredTable = function(tbl.filtered){
+           private$tbl.filtered <- tbl.filtered
+           },
+
+       #------------------------------------------------------------
+       getFilteredTable = function(){
+           invisible(private$tbl.filtered)
+           },
+
+       #------------------------------------------------------------
+       getCollapsedFilteredTable = function(){
+           invisible(private$tbl.filtered.collapsed)
            },
 
        #------------------------------------------------------------
@@ -167,7 +185,52 @@ buildFT = R6Class("buildFT",
            names(feature.guide) <- feature.name
            names(default.values) <- feature.name
            private$ft$addRegionFeature(tbl.gh, feature.genome="hg38", feature.guide, default.values)
-           } # add.genehancer
+           }, # add.genehancer
+
+       #------------------------------------------------------------
+       run.trena = function(tfs){
+          solver <- EnsembleSolver(private$etx$get.rna.matrix(private$gtex.tissue),
+                                   targetGene=private$targetGene,
+                                   candidateRegulators=tfs,
+                                   solverNames=c("lasso", "Ridge", "Spearman", "Pearson", "RandomForest", "xgboost"),
+                                   geneCutoff=1.0)
+          tbl.trena <- run(solver)
+          new.order <- order(tbl.trena$rfScore, decreasing=TRUE)
+          tbl.trena <- tbl.trena[new.order,]
+          tbl.fft <-  self$getCollapsedFilteredTable()
+          tbl.trena$tfbs <- as.integer(lapply(tbl.trena$gene, function(gene) nrow(subset(tbl.fft, tf==gene))))
+          gtex.eqtl.column.name <- sub("V8.Brain_", "", sprintf("%s.eqtl.rsid", private$gtex.tissue))
+          x <- lapply(tbl.trena$gene, function(gene) subset(tbl.fft, tf==gene)[, ..gtex.eqtl.column.name])
+          rsids <- as.character(lapply(x, function(rsids) paste(unlist(rsids), collapse=";")))
+          tbl.trena$rsids <- rsids
+          rownames(tbl.trena) <- NULL
+          private$tbl.trena <- tbl.trena
+          invisible(private$tbl.trena)
+          }, # run.trena
+
+       #------------------------------------------------------------
+          # if a tf has overlapping binding sites, and the same rsid, reduce it to a single tfbs
+       reduce.tbl.filtered = function(){
+          stopifnot(!is.null(private$tbl.filtered))
+          tbl.fft <- private$tbl.filtered
+          tf.xtab <- as.list(table(tbl.fft$tf))
+          tfs.mult <- names(tf.xtab[tf.xtab > 1])
+          tfs.single <- names(tf.xtab[tf.xtab == 1])
+          tbl.fftC <- subset(tbl.fft, tf %in% tfs.single)  # "C":  collapsed
+          gtex.eqtl.column.name <- sub("V8.Brain_", "", sprintf("%s.eqtl.rsid", private$gtex.tissue))
+          for(tf.mult in tfs.mult){
+              tbl.sub <- subset(tbl.fft, tf==tf.mult)
+              all.rsids <- as.character(unlist(tbl.sub[, ..gtex.eqtl.column.name]))
+                 # match returns only the first hit
+              keeper.rows <- match(unique(all.rsids), all.rsids)
+              tbl.sub.collapsed <- tbl.sub[keeper.rows,]
+              printf("adding %d rows for %s", nrow(tbl.sub.collapsed), tf.mult)
+              tbl.fftC <- rbind(tbl.fftC, tbl.sub.collapsed)
+              }
+          #browser()
+          private$tbl.filtered.collapsed <- tbl.fftC
+          xyz <- 99
+          }
 
        ) # public
 
@@ -213,7 +276,7 @@ bft <- buildFT$new(targetGene=targetGene,
                    gtex.tissue="GTEx_V8.Brain_Frontal_Cortex_BA9",
                    fimo.file="../shared/tbl.fimo.NDUFS2.RData")
 
-run <- function(){
+go <- function(){
     bft$add.rosmap.eqtls()
     bft$add.genehancer("brain")
     bft$add.genehancer("all")
@@ -222,25 +285,15 @@ run <- function(){
     bft$add.boca.atac()
     bft$add.gtex.expression.correlation()
     tbl <- bft$getTable()
-    subset(tbl, abs(GTEx_Frontal_Cortex_BA9.score) > 0.4 &
-                abs(rna.cor.Frontal_Cortex_BA9) > 0.4 &
-                (mayoAtac | bocaAtac))$tf
-    table(subset(tbl, abs(GTEx_Frontal_Cortex_BA9.score) > 0.2 &
-                      abs(rna.cor.Frontal_Cortex_BA9) > 0.4 &
-#                      abs(rosmap.eqtl.score) > 0.3)$tf)
-                      (mayoAtac | bocaAtac))$tf)
-    table(subset(tbl,
-                 abs(rna.cor.Frontal_Cortex_BA9) > 0.3 &
-                 abs(GTEx_Frontal_Cortex_BA9.score) > 0.2 &
-                 (mayoAtac | bocaAtac | gh > 10)
-                 )$tf)
-    subset(tbl, tf=="SOX21" &
-                abs(GTEx_Frontal_Cortex_BA9.score) > 0.2 &
-                abs(rna.cor.Frontal_Cortex_BA9) > 0.4)  # see slide 26 of slideset "rs4575098"
-       #   1  SOX21    -0.073    -0.025        -0.560       -0.545  13.036   0.135    1 NDUFS2    2   1.00          15.63
-       #   2   EBF1    -0.071    -0.040        -0.554       -0.564  11.814   0.317    2 NDUFS2   18   0.91           7.40
-       #   3   NFIA    -0.217    -0.044        -0.590       -0.598  10.888   0.032    3 NDUFS2    3   0.84           4.49
-       #   4   ZEB1    -0.066    -0.025        -0.592       -0.572   8.691   0.016    4 NDUFS2   12   0.67           4.49
-       #   5  FOXL1    -0.117    -0.069        -0.488       -0.485   7.462   0.012    5 NDUFS2    1   0.57           6.13
-       #   6  ASCL1     0.000    -0.028        -0.520       -0.524   6.225   0.007    6 NDUFS2   13   0.48           2.99
+    tbl.filtered <- subset(tbl, abs(GTEx_Frontal_Cortex_BA9.eqtl.score) > 0.2 &
+                                abs(rna.cor.Frontal_Cortex_BA9) > 0.2 &
+                                (mayoAtac | bocaAtac))
+    table(tbl.filtered$tf)
+    bft$setFilteredTable(tbl.filtered)
+    bft$reduce.tbl.filtered()
+    tbl.fftC <- bft$getCollapsedFilteredTable()
+
+    tfs <- sort(unique(tbl.fftC$tf))
+
+    tbl.trena <- bft$run.trena(tfs)
     }
